@@ -6,12 +6,13 @@ export default function ImposterGame({ socket }) {
   const navigate = useNavigate();
   const [phase, setPhase] = useState('LOBBY'); 
   const [players, setPlayers] = useState([]);
+  // serverInfo non ci serve più per il QR, ma lo teniamo per debug o altro
   const [serverInfo, setServerInfo] = useState(null); 
   const [votesCount, setVotesCount] = useState(0);
   const [resultData, setResultData] = useState(null);
 
   useEffect(() => {
-    socket.emit('request_server_info'); // Richiede IP
+    socket.emit('request_server_info'); 
     
     socket.on('server_info', (info) => setServerInfo(info));
     socket.on('update_player_list', (list) => setPlayers(list));
@@ -36,7 +37,6 @@ export default function ImposterGame({ socket }) {
   };
 
   const exitGame = () => {
-    // 🛑 COMANDO DI CHIUSURA LOBBY
     socket.emit('host_closes_lobby'); 
     navigate('/host');
   };
@@ -45,8 +45,12 @@ export default function ImposterGame({ socket }) {
 
   // 1. LOBBY
   if (phase === 'LOBBY') {
-    if (!serverInfo) return <div className="bg-slate-900 h-screen text-white flex items-center justify-center">Rilevamento IP...</div>;
-    const joinUrl = `http://${serverInfo.ip}:${serverInfo.port}`;
+    // MODIFICA QUI: Usiamo l'indirizzo del browser, non l'IP del server
+    // window.location.origin restituisce es: "https://imposter-game.onrender.com"
+    const joinUrl = window.location.origin; 
+    
+    // Per mostrare il link a testo, togliamo "https://" per pulizia
+    const displayUrl = joinUrl.replace(/^https?:\/\//, '');
 
     return (
       <div className="min-h-screen bg-slate-900 text-white flex p-10 gap-10 font-sans">
@@ -54,10 +58,13 @@ export default function ImposterGame({ socket }) {
         <div className="w-1/3 flex flex-col items-center justify-center bg-slate-800 rounded-3xl p-8 border-4 border-slate-700 shadow-2xl">
           <h2 className="text-3xl font-bold mb-6 text-slate-300">UNISCITI</h2>
           <div className="bg-white p-4 rounded-xl mb-6"><QRCode value={joinUrl} size={200} /></div>
-          <div className="text-4xl font-mono text-yellow-400 font-bold tracking-tighter">{serverInfo.ip}:3000</div>
+          {/* Mostriamo il link pulito */}
+          <div className="text-2xl font-mono text-yellow-400 font-bold tracking-tighter text-center break-all">
+            {displayUrl}
+          </div>
         </div>
 
-        {/* LISTA GIOCATORI */}
+        {/* LISTA GIOCATORI (uguale a prima) */}
         <div className="w-2/3 flex flex-col">
           <div className="flex justify-between items-center mb-6">
               <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-purple-600">IMPOSTORE</h1>
@@ -80,7 +87,7 @@ export default function ImposterGame({ socket }) {
     );
   }
 
-  // 2. INFO
+  // ... (Tutto il resto, INFO, VOTING, RESULT rimane identico a prima) ...
   if (phase === 'INFO') {
     return (
         <div className="min-h-screen bg-slate-800 text-white flex flex-col items-center justify-center p-10 text-center">
@@ -93,7 +100,6 @@ export default function ImposterGame({ socket }) {
     );
   }
 
-  // 3. VOTING
   if (phase === 'VOTING') {
       return (
         <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center">
@@ -107,7 +113,6 @@ export default function ImposterGame({ socket }) {
       );
   }
 
-  // 4. RESULT
   if (phase === 'RESULT') {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-900 to-black">
