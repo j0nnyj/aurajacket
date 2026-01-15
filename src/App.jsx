@@ -2,156 +2,207 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import io from 'socket.io-client';
 
+// PAGINE HOST
 import HostMenu from './pages/HostMenu';
 import ImposterGame from './games/ImposterGame';
+import LiarsBarGame from './games/LiarsBarGame';
+
+// PAGINE TELEFONO
 import ImposterMobile from './mobile/ImposterMobile';
+import LiarsBarMobile from './mobile/LiarsBarMobile';
 
-const socket = io();
-const AVATARS = ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐙", "🦄"];
+// CONNESSIONE SOCKET
+const SERVER_URL = window.location.hostname === 'localhost' 
+  ? `http://${window.location.hostname}:3000` 
+  : window.location.origin;
 
-export default function App() {
-  const isHost = window.location.pathname.startsWith('/host');
-  if (isHost) {
-    return (
-      <BrowserRouter>
-        <Routes>
-          <Route path="/host" element={<HostMenu socket={socket} />} />
-          <Route path="/host/imposter" element={<ImposterGame socket={socket} />} />
-        </Routes>
-      </BrowserRouter>
-    );
-  } 
-  return <PlayerManager />;
-}
+const socket = io(SERVER_URL, { transports: ['websocket', 'polling'] });
 
+const AVATARS = ['😎', '👻', '🤖', '💩', '👽', '🐶', '🐱', '🦄', '🐯', '🐼', '🦊', '🦁', '💀', '🤡', '🤠', '🎃'];
+
+// ==============================================
+// 📱 COMPONENTE GIOCATORE (Mobile)
+// ==============================================
 function PlayerManager() {
-  const [view, setView] = useState('LOADING'); 
+  const [isConnected, setIsConnected] = useState(false);
+  const [view, setView] = useState('LOGIN'); 
   const [name, setName] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
+  const [selectedAvatar, setSelectedAvatar] = useState('😎');
+  const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    // 1. Ascolta cambi vista
-    socket.on('set_view', (v) => setView(v));
-
-    // 2. Ascolta cambi nome forzati (duplicati)
-    socket.on('force_name_change', (newName) => {
-        setName(newName);
-        const saved = JSON.parse(sessionStorage.getItem('aura_player') || '{}');
-        sessionStorage.setItem('aura_player', JSON.stringify({ ...saved, name: newName }));
-    });
-
-    // 3. ASCOLTA IL RESET DELL'HOST (NUOVO)
-    socket.on('force_reset_to_login', () => {
-        console.log("🛑 Reset ricevuto.");
-        sessionStorage.removeItem('aura_player'); // Cancella memoria
-        setName('');
-        setView('LOGIN');
-    });
-
-    // 4. AUTO-LOGIN ALL'AVVIO
-    const savedSession = sessionStorage.getItem('aura_player');
-    if (savedSession) {
-        const { name: savedName, avatar: savedAvatar } = JSON.parse(savedSession);
+    socket.on('connect', () => setIsConnected(true));
+    
+    // Check memoria (aggiornato a AURAGIOCHET)
+    const savedName = localStorage.getItem('auragiochet_name');
+    const savedAvatar = localStorage.getItem('auragiochet_avatar');
+    if (savedName && savedAvatar) {
         setName(savedName);
         setSelectedAvatar(savedAvatar);
-        socket.emit('join_game', { name: savedName, avatar: savedAvatar });
-        setView('RECONNECTING'); 
-    } else {
-        setView('LOGIN');
     }
 
-    return () => {
-        socket.off('set_view');
+    socket.on('set_view', (v) => setView(v));
+    socket.on('force_name_change', (n) => {
+        setName(n);
+        localStorage.setItem('auragiochet_name', n);
+    });
+    
+    socket.on('force_reset_to_login', () => { 
+        localStorage.removeItem('auragiochet_name');
+        localStorage.removeItem('auragiochet_avatar');
+        setView('LOGIN'); 
+        setName(''); 
+    });
+    
+    socket.on('login_error', (msg) => {
+        alert(msg); 
+        setErrorMsg(msg);
+        setView('LOGIN');
+    });
+
+    return () => { 
+        socket.off('connect'); 
+        socket.off('set_view'); 
         socket.off('force_name_change');
         socket.off('force_reset_to_login');
+        socket.off('login_error'); 
     };
   }, []);
 
-  const goToAvatar = () => { if (name.trim()) setView('AVATAR_SELECT'); };
-
-  const joinGame = () => { 
-    // Salva sessione
-    sessionStorage.setItem('aura_player', JSON.stringify({ name, avatar: selectedAvatar }));
-    socket.emit('join_game', { name: name, avatar: selectedAvatar }); 
+  const goToAvatarSelection = () => {
+      if (!name) return;
+      setErrorMsg('');
+      setView('AVATAR_SELECT');
   };
 
-  // --- ROUTING MODULO GIOCO ---
-  if (view.startsWith('IMPOSTER_') || view === 'GAME_OVER') {
-      return <ImposterMobile socket={socket} view={view} setView={setView} playerName={name} />;
-  }
+  const handleJoin = () => {
+    localStorage.setItem('auragiochet_name', name);
+    localStorage.setItem('auragiochet_avatar', selectedAvatar);
+    socket.emit('join_game', { name, avatar: selectedAvatar });
+  };
 
-  // --- UI BASE (GRAFICA DARK) ---
+  // --- VISTE ---
 
-  if (view === 'RECONNECTING' || view === 'LOADING') {
-      return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white animate-pulse text-xl">♻️ Riconnessione...</div>;
-  }
-
+  // 1. LOGIN (NUOVO DESIGN AURAGIOCHET)
   if (view === 'LOGIN') {
-      return (
-        <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center font-sans">
-            <div className="w-full max-w-sm bg-slate-800 p-8 rounded-3xl shadow-2xl border-t-4 border-purple-500">
-                <h1 className="text-4xl font-black text-white mb-2 tracking-tighter">BENVENUTO</h1>
-                <p className="text-slate-400 mb-8 text-sm uppercase font-bold tracking-widest">Inserisci il tuo nome</p>
+    return (
+      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
+        
+        {/* Sfondo Ambientale */}
+        <div className="absolute top-[-20%] left-[-20%] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px]"></div>
+        <div className="absolute bottom-[-20%] right-[-20%] w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px]"></div>
+
+        <div className="relative z-10 w-full max-w-sm">
+            {/* Titolo */}
+            <div className="text-center mb-12">
+                <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 drop-shadow-[0_0_15px_rgba(168,85,247,0.5)] tracking-tighter mb-2">
+                    AURAGIOCHET
+                </h1>
+                <p className="text-indigo-200/50 text-xs font-bold tracking-[0.5em] uppercase">Enter the Game</p>
+            </div>
+
+            {/* Card Login */}
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl">
+                <label className="text-xs uppercase font-bold text-indigo-300 ml-1 mb-2 block tracking-wider">Il tuo Nickname</label>
+                
                 <input 
-                    className="w-full bg-slate-700 text-white p-4 rounded-xl text-center text-xl font-bold border-2 border-transparent focus:border-purple-500 focus:outline-none transition-all mb-6 placeholder-slate-500" 
-                    placeholder="Nome Giocatore" 
-                    value={name} 
-                    onChange={e => setName(e.target.value)} 
-                    maxLength={12}
-                    onKeyDown={e => e.key === 'Enter' && goToAvatar()}
+                  type="text" 
+                  placeholder="Scrivi qui..." 
+                  className="w-full p-4 rounded-xl text-xl font-bold text-center bg-black/40 text-white border-2 border-indigo-500/30 focus:border-indigo-500 outline-none transition placeholder-white/20"
+                  value={name} onChange={e => setName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && name && goToAvatarSelection()} 
                 />
+                
                 <button 
-                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white p-4 rounded-xl font-bold text-xl shadow-lg active:scale-95 transition-transform hover:shadow-purple-500/20" 
-                    onClick={goToAvatar}
+                  onClick={goToAvatarSelection}
+                  disabled={!name} 
+                  className="w-full mt-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-xl font-black text-xl shadow-lg hover:shadow-indigo-500/30 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest"
                 >
-                    AVANTI ➜
+                  Avanti
                 </button>
+                
+                {errorMsg && <p className="text-red-400 text-center font-bold mt-4 text-sm">{errorMsg}</p>}
+            </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 1.5 SCELTA AVATAR (AGGIORNATO)
+  if (view === 'AVATAR_SELECT') {
+      return (
+        <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 text-white relative overflow-hidden">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-900/10 rounded-full blur-[100px]"></div>
+            
+            <div className="relative z-10 w-full max-w-sm text-center">
+                <h2 className="text-3xl font-black text-white mb-8 tracking-tight">SCEGLI AVATAR</h2>
+                
+                <div className="grid grid-cols-4 gap-4 mb-10">
+                    {AVATARS.map((av) => (
+                        <button 
+                            key={av}
+                            onClick={() => setSelectedAvatar(av)}
+                            className={`text-4xl p-4 rounded-2xl border-2 transition-all duration-300 ${selectedAvatar === av ? 'bg-indigo-600 border-white scale-110 shadow-[0_0_20px_rgba(79,70,229,0.5)]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
+                        >
+                            {av}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="flex gap-4">
+                    <button onClick={() => setView('LOGIN')} className="flex-1 py-4 rounded-xl font-bold text-slate-400 bg-white/5 hover:bg-white/10 transition">Indietro</button>
+                    <button onClick={handleJoin} className="flex-[2] py-4 rounded-xl font-bold text-white bg-gradient-to-r from-emerald-500 to-green-600 shadow-lg hover:shadow-green-500/30 text-xl uppercase tracking-widest transition transform active:scale-95">GIOCA</button>
+                </div>
             </div>
         </div>
       );
   }
 
-  if (view === 'AVATAR_SELECT') {
+  // 2. LOBBY GENERALE
+  if (view === 'GLOBAL_LOBBY') {
       return (
-        <div className="min-h-screen bg-slate-900 flex flex-col items-center p-4 pt-8">
-          <h2 className="text-white text-2xl font-bold mb-6">Scegli il tuo volto</h2>
-          <div className="grid grid-cols-4 gap-3 mb-24 w-full max-w-md">
-            {AVATARS.map(emoji => (
-              <button 
-                key={emoji} 
-                onClick={() => setSelectedAvatar(emoji)} 
-                className={`text-4xl aspect-square flex items-center justify-center rounded-2xl transition-all duration-200 
-                  ${selectedAvatar === emoji ? 'bg-green-500 scale-110 shadow-lg border-2 border-white z-10' : 'bg-slate-700 hover:bg-slate-600 border border-slate-600'}`}
-              >
-                {emoji}
-              </button>
-            ))}
+          <div className="h-screen bg-[#050505] flex flex-col items-center justify-center text-white p-6 text-center animate-fade-in relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/20 via-[#050505] to-[#050505]"></div>
+              
+              <div className="relative z-10">
+                  <div className="text-8xl mb-6 inline-block p-6 rounded-full bg-white/5 border-4 border-indigo-500 shadow-[0_0_40px_rgba(99,102,241,0.3)]">
+                      {selectedAvatar}
+                  </div>
+                  <h2 className="text-5xl font-black mb-2 text-white tracking-tighter">{name}</h2>
+                  <p className="text-indigo-400 font-bold uppercase tracking-widest mb-16 text-sm">Connesso a Auragiochet</p>
+                  
+                  <div className="bg-white/5 backdrop-blur border border-white/10 px-10 py-6 rounded-2xl animate-pulse flex flex-col gap-2">
+                      <span className="text-4xl">📺</span>
+                      <span className="text-xs font-bold uppercase text-slate-400 tracking-widest">Guarda lo schermo principale</span>
+                  </div>
+              </div>
           </div>
-          <div className="fixed bottom-0 left-0 w-full bg-slate-800 p-4 rounded-t-3xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)] flex flex-col items-center">
-             <div className="flex items-center gap-3 mb-4 bg-slate-900 px-6 py-2 rounded-full border border-slate-700">
-                <span className="text-3xl animate-bounce-short">{selectedAvatar}</span>
-                <span className="text-xl text-white font-bold truncate max-w-[150px]">{name}</span>
-             </div>
-             <button className="w-full max-w-md bg-green-500 text-white p-4 rounded-xl font-bold text-xl shadow-lg active:scale-95 transition-transform" onClick={joinGame}>
-                ENTRA IN PARTITA
-             </button>
-          </div>
-        </div>
       );
   }
 
-  if (view === 'WAITING') {
-      return (
-        <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-center p-6">
-          <div className="relative">
-             <div className="text-7xl mb-6 animate-bounce">{selectedAvatar}</div>
-             <div className="absolute -bottom-2 -right-2 bg-green-500 w-6 h-6 rounded-full border-4 border-slate-900"></div>
-          </div>
-          <h2 className="text-white text-3xl font-black mb-2 tracking-tight">SEI DENTRO!</h2>
-          <p className="text-slate-400 text-lg font-medium">Non toccare il telefono...</p>
-        </div>
-      );
-  }
+  // 3. GIOCHI & FALLBACK
+  if (view.startsWith('IMPOSTER_') || view === 'GAME_OVER') return <ImposterMobile socket={socket} view={view} setView={setView} playerName={name} />;
+  if (view.startsWith('LIARS_')) return <LiarsBarMobile socket={socket} view={view} setView={setView} />;
+  return <div className="text-white bg-slate-900 h-screen flex items-center justify-center font-bold">Connessione...</div>;
+}
 
-  return null;
+// ==============================================
+// 🌍 APP PRINCIPALE
+// ==============================================
+export default function App() {
+  return (
+    <BrowserRouter>
+      {/* FIRMA JONNY */}
+      <div className="fixed top-3 right-3 z-[9999] font-mono text-[10px] font-bold uppercase tracking-widest pointer-events-none select-none text-white/30">
+          made by jonny <span className="text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.9)] ml-1">beta 0.01</span>
+      </div>
+
+      <Routes>
+        <Route path="/host" element={<HostMenu socket={socket} />} />
+        <Route path="/host/imposter" element={<ImposterGame socket={socket} />} />
+        <Route path="/host/liarsbar" element={<LiarsBarGame socket={socket} />} />
+        <Route path="*" element={<PlayerManager />} />
+      </Routes>
+    </BrowserRouter>
+  );
 }
