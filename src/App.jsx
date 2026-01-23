@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import io from 'socket.io-client';
 
 // PAGINE HOST
 import HostMenu from './pages/HostMenu';
 import ImposterGame from './games/ImposterGame';
 import LiarsBarGame from './games/LiarsBarGame';
+import TrashTalkGame from './games/TrashTalkGame';
 
-// PAGINE TELEFONO
+// PAGINE MOBILE
 import ImposterMobile from './mobile/ImposterMobile';
 import LiarsBarMobile from './mobile/LiarsBarMobile';
+import TrashTalkMobile from './mobile/TrashTalkMobile';
 
 // CONNESSIONE SOCKET
 const SERVER_URL = window.location.hostname === 'localhost' 
@@ -18,38 +20,50 @@ const SERVER_URL = window.location.hostname === 'localhost'
 
 const socket = io(SERVER_URL, { transports: ['websocket', 'polling'] });
 
+// --- CONFIGURAZIONE AVATAR ---
 const AVATARS = ['😎', '👻', '🤖', '💩', '👽', '🐶', '🐱', '🦄', '🐯', '🐼', '🦊', '🦁', '💀', '🤡', '🤠', '🎃'];
+
+// --- COLORI NEON ---
+const NEON_COLORS = [
+    '#ff0055', // Rosso Neon
+    '#00ff99', // Verde Cyber
+    '#00ccff', // Blu Elettrico
+    '#cc00ff', // Viola
+    '#ffaa00', // Arancio
+    '#ffff00', // Giallo
+    '#ffffff', // Bianco
+];
+
+const renderAvatar = (avatarValue, size = 'text-4xl') => {
+    if (avatarValue.includes('/') || avatarValue.includes('.')) {
+        return <img src={avatarValue} alt="avatar" className="w-full h-full object-contain drop-shadow-md" />;
+    }
+    return <span className={size}>{avatarValue}</span>;
+};
 
 // ==============================================
 // 📱 COMPONENTE GIOCATORE (Mobile)
 // ==============================================
 function PlayerManager() {
-  const [isConnected, setIsConnected] = useState(false);
   const [view, setView] = useState('LOGIN'); 
   const [name, setName] = useState('');
-  const [selectedAvatar, setSelectedAvatar] = useState('😎');
+  const [selectedAvatar, setSelectedAvatar] = useState(AVATARS[0]);
+  const [selectedColor, setSelectedColor] = useState(NEON_COLORS[1]); 
   const [errorMsg, setErrorMsg] = useState('');
 
   useEffect(() => {
-    socket.on('connect', () => setIsConnected(true));
-    
-    // Check memoria (aggiornato a AURAGIOCHET)
     const savedName = localStorage.getItem('auragiochet_name');
     const savedAvatar = localStorage.getItem('auragiochet_avatar');
-    if (savedName && savedAvatar) {
-        setName(savedName);
-        setSelectedAvatar(savedAvatar);
-    }
+    const savedColor = localStorage.getItem('auragiochet_color');
+    
+    if (savedName) setName(savedName);
+    if (savedAvatar) setSelectedAvatar(savedAvatar);
+    if (savedColor) setSelectedColor(savedColor);
 
     socket.on('set_view', (v) => setView(v));
-    socket.on('force_name_change', (n) => {
-        setName(n);
-        localStorage.setItem('auragiochet_name', n);
-    });
     
     socket.on('force_reset_to_login', () => { 
-        localStorage.removeItem('auragiochet_name');
-        localStorage.removeItem('auragiochet_avatar');
+        localStorage.clear();
         setView('LOGIN'); 
         setName(''); 
     });
@@ -61,10 +75,8 @@ function PlayerManager() {
     });
 
     return () => { 
-        socket.off('connect'); 
         socket.off('set_view'); 
-        socket.off('force_name_change');
-        socket.off('force_reset_to_login');
+        socket.off('force_reset_to_login'); 
         socket.off('login_error'); 
     };
   }, []);
@@ -78,129 +90,149 @@ function PlayerManager() {
   const handleJoin = () => {
     localStorage.setItem('auragiochet_name', name);
     localStorage.setItem('auragiochet_avatar', selectedAvatar);
-    socket.emit('join_game', { name, avatar: selectedAvatar });
+    localStorage.setItem('auragiochet_color', selectedColor);
+    socket.emit('join_game', { name, avatar: selectedAvatar, color: selectedColor });
   };
 
-  // --- VISTE ---
-
-  // 1. LOGIN (NUOVO DESIGN AURAGIOCHET)
+  // --- VISTA 1: LOGIN ---
   if (view === 'LOGIN') {
     return (
-      <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
-        
-        {/* Sfondo Ambientale */}
-        <div className="absolute top-[-20%] left-[-20%] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px]"></div>
-        <div className="absolute bottom-[-20%] right-[-20%] w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px]"></div>
+      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden text-white">
+        <div className="absolute top-[-20%] left-[-20%] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[100px] pointer-events-none"></div>
+        <div className="absolute bottom-[-20%] right-[-20%] w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[100px] pointer-events-none"></div>
 
-        <div className="relative z-10 w-full max-w-sm">
-            {/* Titolo */}
-            <div className="text-center mb-12">
-                <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 drop-shadow-[0_0_15px_rgba(168,85,247,0.5)] tracking-tighter mb-2">
-                    AURAGIOCHET
-                </h1>
-                <p className="text-indigo-200/50 text-xs font-bold tracking-[0.5em] uppercase">Enter the Game</p>
-            </div>
-
-            {/* Card Login */}
+        <div className="relative z-10 w-full max-w-sm text-center">
+            <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-500 mb-8 tracking-tighter">AURAGIOCHET</h1>
             <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl shadow-2xl">
-                <label className="text-xs uppercase font-bold text-indigo-300 ml-1 mb-2 block tracking-wider">Il tuo Nickname</label>
-                
                 <input 
-                  type="text" 
-                  placeholder="Scrivi qui..." 
-                  className="w-full p-4 rounded-xl text-xl font-bold text-center bg-black/40 text-white border-2 border-indigo-500/30 focus:border-indigo-500 outline-none transition placeholder-white/20"
-                  value={name} onChange={e => setName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && name && goToAvatarSelection()} 
+                    type="text" 
+                    placeholder="NICKNAME" 
+                    className="w-full p-4 rounded-xl text-xl font-black text-center bg-black/50 text-white border-2 border-white/10 focus:border-purple-500 outline-none mb-6 uppercase"
+                    value={name} 
+                    onChange={e => setName(e.target.value.toUpperCase())} 
+                    maxLength={12} 
                 />
-                
-                <button 
-                  onClick={goToAvatarSelection}
-                  disabled={!name} 
-                  className="w-full mt-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-4 rounded-xl font-black text-xl shadow-lg hover:shadow-indigo-500/30 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest"
-                >
-                  Avanti
-                </button>
-                
-                {errorMsg && <p className="text-red-400 text-center font-bold mt-4 text-sm">{errorMsg}</p>}
+                <button onClick={goToAvatarSelection} disabled={!name} className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-4 rounded-xl font-black text-xl uppercase shadow-lg active:scale-95 transition-all disabled:opacity-50">AVANTI</button>
+                {errorMsg && <p className="text-red-400 mt-4 font-bold text-sm animate-pulse">⚠️ {errorMsg}</p>}
             </div>
         </div>
       </div>
     );
   }
 
-  // 1.5 SCELTA AVATAR (AGGIORNATO)
+  // --- VISTA 2: AVATAR & COLORE (FIX RESPONSIVE) ---
   if (view === 'AVATAR_SELECT') {
       return (
-        <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 text-white relative overflow-hidden">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-900/10 rounded-full blur-[100px]"></div>
-            
-            <div className="relative z-10 w-full max-w-sm text-center">
-                <h2 className="text-3xl font-black text-white mb-8 tracking-tight">SCEGLI AVATAR</h2>
+        <div className="min-h-screen bg-[#0a0a0a] text-white flex flex-col items-center p-4 relative overflow-y-auto">
+            {/* Contenitore centrale limitato in larghezza per non spanciare sui tablet */}
+            <div className="w-full max-w-sm flex flex-col gap-6 py-6">
                 
-                <div className="grid grid-cols-4 gap-4 mb-10">
-                    {AVATARS.map((av) => (
-                        <button 
-                            key={av}
-                            onClick={() => setSelectedAvatar(av)}
-                            className={`text-4xl p-4 rounded-2xl border-2 transition-all duration-300 ${selectedAvatar === av ? 'bg-indigo-600 border-white scale-110 shadow-[0_0_20px_rgba(79,70,229,0.5)]' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}
-                        >
-                            {av}
-                        </button>
-                    ))}
+                {/* 1. SELEZIONE EMOJI */}
+                <div className="bg-white/5 rounded-3xl p-5 border border-white/10">
+                    <h2 className="text-xs font-bold uppercase tracking-widest text-white/50 mb-4 text-center">1. Scegli il Volto</h2>
+                    <div className="grid grid-cols-4 gap-3">
+                        {AVATARS.map((av) => {
+                            const isSelected = selectedAvatar === av;
+                            return (
+                                <button 
+                                    key={av} 
+                                    onClick={() => setSelectedAvatar(av)} 
+                                    className={`aspect-square rounded-xl flex items-center justify-center transition-all duration-200 border-2 ${isSelected ? 'bg-white/10 border-white scale-110 shadow-lg z-10' : 'border-transparent opacity-60 hover:opacity-100'}`}
+                                >
+                                    {renderAvatar(av, 'text-3xl')}
+                                </button>
+                            );
+                        })}
+                    </div>
                 </div>
 
-                <div className="flex gap-4">
-                    <button onClick={() => setView('LOGIN')} className="flex-1 py-4 rounded-xl font-bold text-slate-400 bg-white/5 hover:bg-white/10 transition">Indietro</button>
-                    <button onClick={handleJoin} className="flex-[2] py-4 rounded-xl font-bold text-white bg-gradient-to-r from-emerald-500 to-green-600 shadow-lg hover:shadow-green-500/30 text-xl uppercase tracking-widest transition transform active:scale-95">GIOCA</button>
+                {/* 2. SELEZIONE COLORE (FIX GLOW TAGLIATO) */}
+                <div className="bg-white/5 rounded-3xl p-5 border border-white/10">
+                    <h2 className="text-xs font-bold uppercase tracking-widest text-white/50 mb-4 text-center">2. Scegli il Colore</h2>
+                    {/* Usa flex-wrap invece di overflow-x per evitare il taglio dell'ombra */}
+                    <div className="flex flex-wrap justify-center gap-4 px-2 py-2">
+                        {NEON_COLORS.map((col) => {
+                            const isSelected = selectedColor === col;
+                            return (
+                                <button 
+                                    key={col}
+                                    onClick={() => setSelectedColor(col)}
+                                    // Aggiunto margine per evitare che il glow venga tagliato dai vicini
+                                    className={`w-10 h-10 rounded-full border-2 transition-all duration-300 relative ${isSelected ? 'scale-125 z-10' : 'scale-100 opacity-50'}`}
+                                    style={{ 
+                                        backgroundColor: col, 
+                                        borderColor: isSelected ? 'white' : 'transparent',
+                                        // Ombra molto più visibile e non tagliata
+                                        boxShadow: isSelected ? `0 0 20px ${col}` : 'none'
+                                    }}
+                                />
+                            );
+                        })}
+                    </div>
                 </div>
+                
+                {/* BOTTONI AZIONE */}
+                <div className="flex gap-4 mt-2">
+                    <button onClick={() => setView('LOGIN')} className="flex-1 py-4 rounded-xl font-bold bg-white/10 uppercase text-sm">Indietro</button>
+                    <button 
+                        onClick={handleJoin} 
+                        className="flex-[2] py-4 rounded-xl font-black text-xl uppercase shadow-lg text-black transition-transform active:scale-95"
+                        style={{ backgroundColor: selectedColor, boxShadow: `0 0 25px ${selectedColor}60` }}
+                    >
+                        ENTRA
+                    </button>
+                </div>
+
+                <div className="h-10"></div> {/* Spazio extra per lo scroll */}
             </div>
         </div>
       );
   }
 
-  // 2. LOBBY GENERALE
+  // --- VISTA 3: LOBBY ---
   if (view === 'GLOBAL_LOBBY') {
       return (
-          <div className="h-screen bg-[#050505] flex flex-col items-center justify-center text-white p-6 text-center animate-fade-in relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900/20 via-[#050505] to-[#050505]"></div>
-              
-              <div className="relative z-10">
-                  <div className="text-8xl mb-6 inline-block p-6 rounded-full bg-white/5 border-4 border-indigo-500 shadow-[0_0_40px_rgba(99,102,241,0.3)]">
-                      {selectedAvatar}
+          <div className="h-screen bg-[#0a0a0a] flex flex-col items-center justify-center text-white p-6 text-center relative overflow-hidden">
+              <div className="absolute inset-0 opacity-20 blur-[100px]" style={{ background: `radial-gradient(circle, ${selectedColor}, transparent 70%)` }}></div>
+              <div className="relative z-10 flex flex-col items-center">
+                  <div 
+                    className="w-48 h-48 rounded-full border-[6px] flex items-center justify-center mb-8 bg-black/40 backdrop-blur-md animate-pulse-slow"
+                    style={{ borderColor: selectedColor, boxShadow: `0 0 50px ${selectedColor}60, inset 0 0 20px ${selectedColor}30` }}
+                  >
+                      {renderAvatar(selectedAvatar, 'text-8xl drop-shadow-md')}
                   </div>
-                  <h2 className="text-5xl font-black mb-2 text-white tracking-tighter">{name}</h2>
-                  <p className="text-indigo-400 font-bold uppercase tracking-widest mb-16 text-sm">Connesso a Auragiochet</p>
-                  
-                  <div className="bg-white/5 backdrop-blur border border-white/10 px-10 py-6 rounded-2xl animate-pulse flex flex-col gap-2">
-                      <span className="text-4xl">📺</span>
-                      <span className="text-xs font-bold uppercase text-slate-400 tracking-widest">Guarda lo schermo principale</span>
+                  <h2 className="text-4xl font-black mb-3 uppercase tracking-wider drop-shadow-lg">{name}</h2>
+                  <div className="bg-white/10 px-6 py-2 rounded-full border border-white/10 backdrop-blur-md flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: selectedColor }}></div>
+                      <p className="text-white/60 font-bold uppercase text-xs tracking-[0.2em]">In attesa dell'Host...</p>
                   </div>
               </div>
           </div>
       );
   }
 
-  // 3. GIOCHI & FALLBACK
-  if (view.startsWith('IMPOSTER_') || view === 'GAME_OVER') return <ImposterMobile socket={socket} view={view} setView={setView} playerName={name} />;
-  if (view.startsWith('LIARS_')) return <LiarsBarMobile socket={socket} view={view} setView={setView} />;
-  return <div className="text-white bg-slate-900 h-screen flex items-center justify-center font-bold">Connessione...</div>;
+  return <MobileGameRouter socket={socket} view={view} setView={setView} playerName={name} />;
 }
 
-// ==============================================
-// 🌍 APP PRINCIPALE
-// ==============================================
+// 🔀 ROUTER GIOCHI
+function MobileGameRouter({ socket, view, setView, playerName }) {
+    if (view.startsWith('LIARS_')) return <LiarsBarMobile socket={socket} view={view} setView={setView} />;
+   if (view.startsWith('TRASHTALK_')) return <TrashTalkMobile socket={socket} view={view} setView={setView} />;
+    return <ImposterMobile socket={socket} view={view} setView={setView} playerName={playerName} />;
+}
+
+// 🌍 APP ROUTING
 export default function App() {
   return (
     <BrowserRouter>
-      {/* FIRMA JONNY */}
-      <div className="fixed top-3 right-3 z-[9999] font-mono text-[10px] font-bold uppercase tracking-widest pointer-events-none select-none text-white/30">
-          made by jonny <span className="text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.9)] ml-1">beta 0.01</span>
+      <div className="fixed top-3 right-3 z-[9999] font-mono text-[10px] font-bold uppercase tracking-widest pointer-events-none select-none text-white/20">
+          made by jonny <span className="text-white ml-1 opacity-50">beta 0.01</span>
       </div>
-
       <Routes>
         <Route path="/host" element={<HostMenu socket={socket} />} />
         <Route path="/host/imposter" element={<ImposterGame socket={socket} />} />
         <Route path="/host/liarsbar" element={<LiarsBarGame socket={socket} />} />
+        <Route path="/host/trashtalk" element={<TrashTalkGame socket={socket} />} />
         <Route path="*" element={<PlayerManager />} />
       </Routes>
     </BrowserRouter>

@@ -8,16 +8,39 @@ export class ImposterGame {
     this.votes = {};
     
     this.database = [
-      { category: "Mezzo di Trasporto", word: "Ferrari" },
-      { category: "Cibo Italiano", word: "Pizza" },
-      { category: "Animale Domestico", word: "Gatto" },
-      { category: "Sport", word: "Calcio" },
-      { category: "Elettrodomestico", word: "Lavatrice" },
-      { category: "Luogo di Vacanza", word: "Spiaggia" },
-      { category: "Strumento Musicale", word: "Chitarra" },
-      { category: "Bevanda", word: "Caffè" },
-      { category: "Oggetto Scolastico", word: "Zaino" },
-      { category: "Parte del Corpo", word: "Mano" }
+      // === LIVELLO MEDIO (Specifici ma descrivibili) ===
+      { category: "Cucina di Lusso", word: "Tartufo" },
+      { category: "Crimini", word: "Rapimento" },
+      { category: "Oggetti Vintage", word: "Vinile" },
+      { category: "Fenomeni Naturali", word: "Tsunami" },
+      { category: "Strumenti Chirurgici", word: "Bisturi" },
+      { category: "Insetti", word: "Mantide Religiosa" },
+      { category: "Mezzi Militari", word: "Sottomarino" },
+      { category: "Accessori Invernali", word: "Passamontagna" }, // Ambiguo (Rapina o Neve?)
+      { category: "Sport Estremi", word: "Paracadutismo" },
+      { category: "Luoghi Chiusi", word: "Ascensore" },
+      { category: "Giochi da Casinò", word: "Roulette" },
+      { category: "Parti dell'Auto", word: "Frizione" },
+      { category: "Bevande Alcoliche", word: "Tequila" },
+      { category: "Attrezzi da Giardino", word: "Motosega" },
+      { category: "Creature Notturne", word: "Pipistrello" },
+
+      // === LIVELLO DIFFICILE (Astratti, ambigui o storici) ===
+      { category: "Concetti Astratti", word: "Nostalgia" },
+      { category: "Economia", word: "Inflazione" },
+      { category: "Fisica Spaziale", word: "Buco Nero" },
+      { category: "Eventi Storici", word: "Guerra Fredda" },
+      { category: "Sistemi Politici", word: "Dittatura" },
+      { category: "Elementi Chimici", word: "Mercurio" }, // Liquido o Pianeta?
+      { category: "Creature Mitologiche", word: "Medusa" },
+      { category: "Peccati Capitali", word: "Lussuria" },
+      { category: "Malattie", word: "Ipocondria" },
+      { category: "Figure Religiose", word: "Esorcista" },
+      { category: "Catastrofi", word: "Chernobyl" },
+      { category: "Simboli Matematici", word: "Infinito" },
+      { category: "Generi Musicali", word: "Jazz" }, // Difficile da descrivere senza suoni
+      { category: "Tecnologia", word: "Intelligenza Artificiale" },
+      { category: "Filosofia", word: "Karma" }
     ];
   }
 
@@ -38,64 +61,47 @@ export class ImposterGame {
     }
   }
 
-  setupListeners(socket, getLatestPlayers) {
-    socket.on('imposter_start', () => {
-      if (getLatestPlayers) {
-         const livePlayers = getLatestPlayers();
-         this.players = livePlayers.map(lp => ({ 
-             ...lp, 
-             role: 'CIVILIAN', 
-             secretInfo: '',
-             isAlive: true 
-         }));
+  // Funzione chiamata dal server quando l'Host preme "SI VOTA"
+  handleForceVoting() {
+      this.gameState = 'VOTING';
+      this.io.emit('imposter_voting_started');
+      
+      // Aggiorna la lista giocatori per sicurezza (per i bottoni di voto sul mobile)
+      this.io.emit('update_player_list', this.players);
+
+      this.players.forEach(p => this.io.to(p.id).emit('set_view', 'IMPOSTER_VOTE'));
+  }
+
+  // Gestione sync per chi si riconnette o entra dopo
+  syncSinglePlayer(socket, player) {
+      if (this.gameState === 'LOBBY') {
+          this.io.to(player.id).emit('set_view', 'IMPOSTER_LOBBY');
+      } 
+      else if (this.gameState === 'GAME') {
+          this.io.to(player.id).emit('imposter_role_data', {
+              role: player.role,
+              info: player.secretInfo
+          });
+          this.io.to(player.id).emit('set_view', 'IMPOSTER_ROLE');
       }
-      this.startGame();
-    });
+      else if (this.gameState === 'VOTING') {
+          this.io.to(player.id).emit('set_view', 'IMPOSTER_VOTE');
+      }
+      else if (this.gameState === 'GAME_OVER') {
+          this.io.to(player.id).emit('set_view', 'GAME_OVER');
+      }
+  }
 
-    socket.on('imposter_sync', () => {
-        const player = this.players.find(p => p.id === socket.id);
-        if (!player) return;
-
-        if (this.gameState === 'LOBBY') {
-            this.io.to(player.id).emit('set_view', 'IMPOSTER_LOBBY');
-        } 
-        else if (this.gameState === 'GAME') {
-            this.io.to(player.id).emit('imposter_role_data', {
-                role: player.role,
-                info: player.secretInfo
-            });
-            this.io.to(player.id).emit('set_view', 'IMPOSTER_ROLE');
-        }
-        else if (this.gameState === 'VOTING') {
-            this.io.to(player.id).emit('set_view', 'IMPOSTER_VOTE');
-        }
-        else if (this.gameState === 'GAME_OVER') {
-            this.io.to(player.id).emit('set_view', 'GAME_OVER');
-        }
-    });
-
-    socket.on('imposter_vote', (targetId) => {
-        if (this.gameState !== 'VOTING') return;
-        this.votes[socket.id] = targetId;
-        this.io.emit('imposter_vote_update', this.votes);
-        
-        const livingPlayers = this.players.filter(p => p.isAlive);
-        if (Object.keys(this.votes).length >= livingPlayers.length) {
-            this.calculateResults();
-        }
-    });
-
-    socket.on('imposter_force_voting', () => {
-        this.gameState = 'VOTING';
-        this.io.emit('imposter_voting_started');
-        
-        // --- MODIFICA SICUREZZA ---
-        // Quando inizia il voto, reinviamo la lista dei giocatori a tutti
-        // per essere sicuri che i telefoni abbiano i dati per generare i pulsanti
-        this.io.emit('update_player_list', this.players);
-
-        this.players.forEach(p => this.io.to(p.id).emit('set_view', 'IMPOSTER_VOTE'));
-    });
+  handleVote(voterId, targetId) {
+      if (this.gameState !== 'VOTING') return;
+      this.votes[voterId] = targetId;
+      this.io.emit('imposter_vote_update', this.votes);
+      
+      const livingPlayers = this.players.filter(p => p.isAlive);
+      // Se tutti i vivi hanno votato, calcola il risultato
+      if (Object.keys(this.votes).length >= livingPlayers.length) {
+          this.calculateResults();
+      }
   }
 
   startGame() {
@@ -152,11 +158,11 @@ export class ImposterGame {
       let winner = "";
       
       if (!eliminatedPlayer) {
-          winner = "IMPOSTER"; 
+          winner = "IMPOSTER"; // Nessuno eliminato (pareggio o skip), vince impostore
       } else if (eliminatedId === this.imposterId) {
-          winner = "CIVILIANS"; 
+          winner = "CIVILIANS"; // Impostore beccato
       } else {
-          winner = "IMPOSTER"; 
+          winner = "IMPOSTER"; // Innocente eliminato
       }
 
       const resultData = {

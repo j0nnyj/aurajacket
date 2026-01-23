@@ -27,14 +27,65 @@ export class LiarsBarGame {
     this.bulletChamber = {};
     this.finishedRank = 0;
     
-    // Inizializza pistole
     this.players.forEach(p => {
         this.bulletChamber[p.id] = { current: 0, bullet: Math.floor(Math.random() * 6) };
         this.io.to(p.id).emit('set_view', 'LIARS_LOBBY');
     });
   }
 
-  // Helper per mani casuali
+  reconnectPlayer(socket, globalPlayer, oldId) {
+      const gamePlayer = this.players.find(p => p.name === globalPlayer.name);
+      if (!gamePlayer) return false;
+
+      const newId = socket.id;
+      gamePlayer.id = newId;
+
+      if (this.bulletChamber[oldId]) {
+          this.bulletChamber[newId] = this.bulletChamber[oldId];
+          delete this.bulletChamber[oldId];
+      }
+
+      if (this.lastPlayerId === oldId) this.lastPlayerId = newId;
+      if (this.victimId === oldId) this.victimId = newId;
+      if (this.nextRoundStarterId === oldId) this.nextRoundStarterId = newId;
+
+      this.tableStack.forEach(play => {
+          if (play.playerId === oldId) play.playerId = newId;
+      });
+
+      this.setupListeners(socket);
+      this.syncSinglePlayer(socket, gamePlayer);
+      return true;
+  }
+
+  syncSinglePlayer(socket, player) {
+      if (this.gameState === 'GAME_OVER') {
+          socket.emit('set_view', 'LIARS_GAME_OVER');
+          socket.emit('liars_rank', player.rank);
+          return;
+      }
+      if (!player.isAlive) { socket.emit('set_view', 'LIARS_DEAD'); return; }
+      if (player.isFinished) { socket.emit('set_view', 'LIARS_WON'); socket.emit('liars_rank', player.rank); return; }
+
+      if (this.gameState === 'ROULETTE') {
+          if (player.id === this.victimId) {
+             const chamber = this.bulletChamber[player.id];
+             const prob = chamber ? `1 su ${6 - chamber.current}` : "?";
+             socket.emit('liars_gun_stats', { probability: prob });
+             socket.emit('set_view', 'LIARS_ROULETTE');
+          } else {
+             socket.emit('set_view', 'LIARS_WAITING_SHOT');
+          }
+      } else {
+          if(this.gameState === 'LOBBY') socket.emit('set_view', 'LIARS_LOBBY');
+          else {
+              socket.emit('liars_hand', player.hand);
+              socket.emit('set_view', 'LIARS_HAND');
+          }
+      }
+      this.emitGameState();
+  }
+
   generateHand() {
       const hand = [];
       for (let i = 0; i < 5; i++) {
@@ -53,43 +104,16 @@ export class LiarsBarGame {
       return values[Math.floor(Math.random() * values.length)];
   }
 
-  setupListeners(socket, getLatestPlayers) {
+  setupListeners(socket) {
     socket.on('liars_start', () => this.startGame());
-    
-    // SYNC
     socket.on('liars_sync', () => {
-      const player = this.players.find(p => p.id === socket.id);
-      if (!player) return;
-
-      if (this.gameState === 'LOBBY') {
-          this.io.to(player.id).emit('set_view', 'LIARS_LOBBY');
-      } else if (!player.isAlive) {
-          this.io.to(player.id).emit('set_view', 'LIARS_DEAD');
-      } else if (player.isFinished) {
-          this.io.to(player.id).emit('set_view', 'LIARS_WON');
-          this.io.to(player.id).emit('liars_rank', player.rank);
-      } else if (this.gameState === 'ROULETTE') {
-          if (player.id === this.victimId) {
-             const chamber = this.bulletChamber[player.id];
-             const prob = chamber ? `1 su ${6 - chamber.current}` : "?";
-             this.io.to(player.id).emit('liars_gun_stats', { probability: prob });
-             this.io.to(player.id).emit('set_view', 'LIARS_ROULETTE');
-          } else {
-             this.io.to(player.id).emit('set_view', 'LIARS_WAITING_SHOT');
-          }
-          this.emitGameState(); 
-      } else {
-          // Fase PLAYING
-          this.io.to(player.id).emit('liars_hand', player.hand);
-          this.io.to(player.id).emit('set_view', 'LIARS_HAND');
-          this.emitGameState();
-      }
+        const player = this.players.find(p => p.id === socket.id);
+        if(player) this.syncSinglePlayer(socket, player);
     });
-
     socket.on('liars_play_cards', (indices) => this.handlePlayCards(socket.id, indices));
     socket.on('liars_doubt', () => this.handleDoubt(socket.id));
     socket.on('liars_trigger', () => this.handleTrigger(socket.id));
-    socket.on('liars_stop', () => { this.gameState = 'LOBBY'; this.players = []; });
+    socket.on('liars_reconnect', () => {}); 
   }
 
   startGame() {
@@ -110,21 +134,11 @@ export class LiarsBarGame {
 
   handlePlayCards(playerId, selectedIndices) {
       if (this.gameState !== 'PLAYING') return;
-
       const player = this.players.find(p => p.id === playerId);
       if (!player) return;
-
-      // --- FIX CRASH: Controllo di sicurezza ---
       const activePlayer = this.players[this.turnIndex];
-      if (!activePlayer) {
-          console.error("ERRORE: Indice turno non valido, resetto al primo giocatore vivo.");
-          this.nextTurn(); 
-          return;
-      }
-      if (activePlayer.id !== playerId) return; 
-      // ---------------------------------------
+      if (!activePlayer || activePlayer.id !== playerId) return; 
 
-      // Check se il giocatore PRECEDENTE è salvo
       if (this.lastPlayerId) {
           const prev = this.players.find(p => p.id === this.lastPlayerId);
           if (prev && prev.isAlive && !prev.isFinished && prev.hand.length === 0) {
@@ -155,7 +169,6 @@ export class LiarsBarGame {
 
       this.lastPlayerId = player.id; 
       this.io.to(player.id).emit('liars_hand', player.hand);
-      
       this.nextTurn();
   }
 
@@ -171,7 +184,7 @@ export class LiarsBarGame {
 
       if (isTruth) {
           const honestPlayer = this.players.find(p => p.id === lastPlay.playerId);
-          if (honestPlayer.hand.length === 0 && !honestPlayer.isFinished) {
+          if (honestPlayer && honestPlayer.hand.length === 0 && !honestPlayer.isFinished) {
                this.finishedRank++;
                honestPlayer.isFinished = true;
                honestPlayer.rank = this.finishedRank;
@@ -189,13 +202,15 @@ export class LiarsBarGame {
           loserId: loserId
       });
 
-      this.startRoulette(loserId);
+      // --- TEMPO VELOCE: 3s suspense + 4s lettura = 7s totali ---
+      setTimeout(() => {
+          this.startRoulette(loserId);
+      }, 3000); 
   }
 
   startRoulette(victimId) {
       this.gameState = 'ROULETTE';
       this.victimId = victimId;
-      
       const chamber = this.bulletChamber[victimId];
       const prob = chamber ? `1 su ${6 - chamber.current}` : "?";
 
@@ -213,26 +228,29 @@ export class LiarsBarGame {
 
   handleTrigger(playerId) {
       if (this.gameState !== 'ROULETTE' || playerId !== this.victimId) return;
-
       const chamber = this.bulletChamber[playerId];
       const isDead = chamber.current === chamber.bullet;
 
+      // 1. Manda subito l'evento alla TV per iniziare lo SPIN
+      this.io.emit('liars_shot_result', { status: isDead ? 'DEAD' : 'ALIVE', playerId });
+
+      // 2. TIMING SINCRONIZZATO PER IL TELEFONO
       if (isDead) {
           const player = this.players.find(p => p.id === playerId);
           player.isAlive = false;
           
-          this.io.to(playerId).emit('set_view', 'LIARS_DEAD');
-          this.io.emit('liars_shot_result', { status: 'DEAD', playerId });
-
+          // ASPETTA 3 SECONDI (Tempo dello spin sulla TV) prima di dire al telefono che è morto
+          // Questo serve come backup se il frontend mobile non usa il setTimeout
           setTimeout(() => {
-              if (!this.checkWinCondition()) {
-                  this.resetRoundAfterShot(true);
-              }
-          }, 5000);
+              this.io.to(playerId).emit('set_view', 'LIARS_DEAD');
+          }, 3000); 
+
+          // Resetta il round dopo l'animazione completa (3s spin + ~3s morte = ~6s)
+          setTimeout(() => { if (!this.checkWinCondition()) this.resetRoundAfterShot(true); }, 6000);
       } else {
           chamber.current += 1;
-          this.io.emit('liars_shot_result', { status: 'ALIVE', playerId });
-          setTimeout(() => this.resetRoundAfterShot(false), 3000);
+          // Resetta il round velocemente (2.8s spin + 2s respiro = ~5s)
+          setTimeout(() => this.resetRoundAfterShot(false), 5000);
       }
   }
 
@@ -240,7 +258,6 @@ export class LiarsBarGame {
       this.gameState = 'PLAYING';
       this.tableStack = [];
       this.requiredValue = this.pickRandomValue();
-
       this.players.forEach(p => {
           if (p.isAlive && !p.isFinished) {
               p.hand = this.generateHand();
@@ -248,31 +265,21 @@ export class LiarsBarGame {
               this.io.to(p.id).emit('set_view', 'LIARS_HAND');
           }
       });
-
-      if (victimDied) {
-          this.nextTurn();
-      } else {
+      if (victimDied) this.nextTurn();
+      else {
           const winnerIndex = this.players.findIndex(p => p.id === this.nextRoundStarterId);
-          if (winnerIndex !== -1 && this.players[winnerIndex].isAlive && !this.players[winnerIndex].isFinished) {
-              this.turnIndex = winnerIndex;
-          } else {
-              this.nextTurn();
-              return;
-          }
+          if (winnerIndex !== -1 && this.players[winnerIndex].isAlive && !this.players[winnerIndex].isFinished) this.turnIndex = winnerIndex;
+          else this.nextTurn();
           this.emitGameState();
       }
   }
 
   nextTurn() {
       let attempts = 0;
-      // Loop finché non trovi un giocatore vivo e non finito
       do {
           this.turnIndex = (this.turnIndex + 1) % this.players.length;
           attempts++;
-      } while (
-          (!this.players[this.turnIndex].isAlive || this.players[this.turnIndex].isFinished) 
-          && attempts < this.players.length * 2
-      );
+      } while ((!this.players[this.turnIndex].isAlive || this.players[this.turnIndex].isFinished) && attempts < this.players.length * 2);
       this.emitGameState();
   }
 
@@ -288,23 +295,24 @@ export class LiarsBarGame {
           }
           this.gameState = 'GAME_OVER';
           this.emitGameState();
-          this.io.emit('set_view', 'GAME_OVER');
+          this.io.emit('set_view', 'LIARS_GAME_OVER'); 
           return true;
       }
       return false;
   }
 
   emitGameState() {
-      // --- FIX CRASH: Controllo di sicurezza anche qui ---
       const activePlayer = this.players[this.turnIndex];
       const activeId = activePlayer ? activePlayer.id : null;
+      const realCardCount = this.tableStack.reduce((acc, play) => acc + play.cards.length, 0);
 
       const gameState = {
           phase: this.gameState, 
           activePlayerId: activeId,
           activePlayerName: activePlayer ? activePlayer.name : null,
           requiredValue: this.requiredValue,
-          tableCount: this.tableStack.length,
+          tableCount: realCardCount,
+          lastActorId: this.lastPlayerId,
           victimId: this.victimId,
           players: this.players.map(p => ({ 
               id: p.id, name: p.name, cardCount: p.hand.length, avatar: p.avatar, 
