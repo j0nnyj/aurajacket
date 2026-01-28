@@ -4,7 +4,7 @@ export class ImposterGame {
     this.players = [];
     this.gameState = 'LOBBY'; 
     this.currentData = null; 
-    this.imposterId = null;
+    this.imposterSessionId = null; // <--- MODIFICA: Usiamo sessionId per ricordare chi è l'impostore
     this.votes = {};
     
     this.database = [
@@ -16,7 +16,7 @@ export class ImposterGame {
       { category: "Strumenti Chirurgici", word: "Bisturi" },
       { category: "Insetti", word: "Mantide Religiosa" },
       { category: "Mezzi Militari", word: "Sottomarino" },
-      { category: "Accessori Invernali", word: "Passamontagna" }, // Ambiguo (Rapina o Neve?)
+      { category: "Accessori Invernali", word: "Passamontagna" },
       { category: "Sport Estremi", word: "Paracadutismo" },
       { category: "Luoghi Chiusi", word: "Ascensore" },
       { category: "Giochi da Casinò", word: "Roulette" },
@@ -31,20 +31,21 @@ export class ImposterGame {
       { category: "Fisica Spaziale", word: "Buco Nero" },
       { category: "Eventi Storici", word: "Guerra Fredda" },
       { category: "Sistemi Politici", word: "Dittatura" },
-      { category: "Elementi Chimici", word: "Mercurio" }, // Liquido o Pianeta?
+      { category: "Elementi Chimici", word: "Mercurio" },
       { category: "Creature Mitologiche", word: "Medusa" },
       { category: "Peccati Capitali", word: "Lussuria" },
       { category: "Malattie", word: "Ipocondria" },
       { category: "Figure Religiose", word: "Esorcista" },
       { category: "Catastrofi", word: "Chernobyl" },
       { category: "Simboli Matematici", word: "Infinito" },
-      { category: "Generi Musicali", word: "Jazz" }, // Difficile da descrivere senza suoni
+      { category: "Generi Musicali", word: "Jazz" },
       { category: "Tecnologia", word: "Intelligenza Artificiale" },
       { category: "Filosofia", word: "Karma" }
     ];
   }
 
   initGame(currentPlayers) {
+    // Clona i giocatori assicurandosi di mantenere il sessionId
     this.players = currentPlayers.map(p => ({
       ...p,
       role: 'CIVILIAN', 
@@ -61,49 +62,6 @@ export class ImposterGame {
     }
   }
 
-  // Funzione chiamata dal server quando l'Host preme "SI VOTA"
-  handleForceVoting() {
-      this.gameState = 'VOTING';
-      this.io.emit('imposter_voting_started');
-      
-      // Aggiorna la lista giocatori per sicurezza (per i bottoni di voto sul mobile)
-      this.io.emit('update_player_list', this.players);
-
-      this.players.forEach(p => this.io.to(p.id).emit('set_view', 'IMPOSTER_VOTE'));
-  }
-
-  // Gestione sync per chi si riconnette o entra dopo
-  syncSinglePlayer(socket, player) {
-      if (this.gameState === 'LOBBY') {
-          this.io.to(player.id).emit('set_view', 'IMPOSTER_LOBBY');
-      } 
-      else if (this.gameState === 'GAME') {
-          this.io.to(player.id).emit('imposter_role_data', {
-              role: player.role,
-              info: player.secretInfo
-          });
-          this.io.to(player.id).emit('set_view', 'IMPOSTER_ROLE');
-      }
-      else if (this.gameState === 'VOTING') {
-          this.io.to(player.id).emit('set_view', 'IMPOSTER_VOTE');
-      }
-      else if (this.gameState === 'GAME_OVER') {
-          this.io.to(player.id).emit('set_view', 'GAME_OVER');
-      }
-  }
-
-  handleVote(voterId, targetId) {
-      if (this.gameState !== 'VOTING') return;
-      this.votes[voterId] = targetId;
-      this.io.emit('imposter_vote_update', this.votes);
-      
-      const livingPlayers = this.players.filter(p => p.isAlive);
-      // Se tutti i vivi hanno votato, calcola il risultato
-      if (Object.keys(this.votes).length >= livingPlayers.length) {
-          this.calculateResults();
-      }
-  }
-
   startGame() {
     this.gameState = 'GAME';
     this.votes = {};
@@ -111,13 +69,18 @@ export class ImposterGame {
     const randomIndex = Math.floor(Math.random() * this.database.length);
     this.currentData = this.database[randomIndex];
 
+    // Scegli Impostore a caso
     const imposterIndex = Math.floor(Math.random() * this.players.length);
-    this.imposterId = this.players[imposterIndex].id;
+    // <--- MODIFICA: Salviamo la sessione, non il socket ID
+    this.imposterSessionId = this.players[imposterIndex].sessionId; 
 
     console.log(`🕵️ Parola: ${this.currentData.word} | Impostore: ${this.players[imposterIndex].name}`);
 
-    this.players.forEach((p, index) => {
-        if (index === imposterIndex) {
+    this.players.forEach((p) => {
+        // Controllo ruolo basato su SessionID
+        const isImposter = (p.sessionId === this.imposterSessionId);
+
+        if (isImposter) {
             p.role = 'IMPOSTER';
             p.secretInfo = this.currentData.category; 
         } else {
@@ -133,6 +96,63 @@ export class ImposterGame {
     });
 
     this.io.emit('imposter_game_started');
+  }
+
+  // --- GESTIONE RICONNESSIONE (FIX REFRESH) ---
+  syncSinglePlayer(socket, player) {
+      // 1. Trova il giocatore nella lista interna usando il sessionId
+      const internalPlayer = this.players.find(p => p.sessionId === player.sessionId);
+      
+      // 2. Aggiorna il socket ID interno (il telefono è cambiato!)
+      if (internalPlayer) {
+          internalPlayer.id = socket.id;
+      }
+
+      // 3. Rimanda la vista corretta in base allo stato
+      if (this.gameState === 'LOBBY') {
+          this.io.to(socket.id).emit('set_view', 'IMPOSTER_LOBBY');
+      } 
+      else if (this.gameState === 'GAME') {
+          // Ricalcola al volo cosa deve vedere
+          const isImposter = (player.sessionId === this.imposterSessionId);
+          const role = isImposter ? 'IMPOSTER' : 'CIVILIAN';
+          const info = isImposter ? this.currentData.category : this.currentData.word;
+
+          this.io.to(socket.id).emit('imposter_role_data', { role, info });
+          this.io.to(socket.id).emit('set_view', 'IMPOSTER_ROLE');
+      }
+      else if (this.gameState === 'VOTING') {
+          this.io.to(socket.id).emit('set_view', 'IMPOSTER_VOTE');
+          // Rimanda anche lo stato dei voti attuali se serve
+          this.io.to(socket.id).emit('imposter_vote_update', this.votes);
+      }
+      else if (this.gameState === 'GAME_OVER') {
+          this.io.to(socket.id).emit('set_view', 'GAME_OVER');
+      }
+  }
+
+  handleForceVoting() {
+      this.gameState = 'VOTING';
+      this.io.emit('imposter_voting_started');
+      this.io.emit('update_player_list', this.players);
+      this.players.forEach(p => this.io.to(p.id).emit('set_view', 'IMPOSTER_VOTE'));
+  }
+
+  handleVote(voterId, targetId) {
+      if (this.gameState !== 'VOTING') return;
+      
+      // Nota: voterId qui è il socket ID. 
+      // Va bene perché syncSinglePlayer ha aggiornato l'ID interno.
+      this.votes[voterId] = targetId;
+      this.io.emit('imposter_vote_update', this.votes);
+      
+      // Conta i voti solo dei giocatori vivi e connessi
+      const activeLivingPlayers = this.players.filter(p => p.isAlive && p.isConnected !== false);
+      
+      // Se abbiamo abbastanza voti (o tutti hanno votato)
+      if (Object.keys(this.votes).length >= activeLivingPlayers.length) {
+          this.calculateResults();
+      }
   }
 
   calculateResults() {
@@ -152,14 +172,16 @@ export class ImposterGame {
       }
 
       this.gameState = 'GAME_OVER';
-      const imposterPlayer = this.players.find(p => p.id === this.imposterId);
+      
+      // Trova i giocatori usando ID o SessionID per sicurezza
+      const imposterPlayer = this.players.find(p => p.sessionId === this.imposterSessionId);
       const eliminatedPlayer = this.players.find(p => p.id === eliminatedId);
       
       let winner = "";
       
       if (!eliminatedPlayer) {
-          winner = "IMPOSTER"; // Nessuno eliminato (pareggio o skip), vince impostore
-      } else if (eliminatedId === this.imposterId) {
+          winner = "IMPOSTER"; 
+      } else if (eliminatedPlayer.sessionId === this.imposterSessionId) {
           winner = "CIVILIANS"; // Impostore beccato
       } else {
           winner = "IMPOSTER"; // Innocente eliminato

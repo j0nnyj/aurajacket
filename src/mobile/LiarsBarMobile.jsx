@@ -9,9 +9,12 @@ export default function LiarsBarMobile({ socket, view, setView }) {
   const [gunStats, setGunStats] = useState({ probability: '???' });
   const [myRank, setMyRank] = useState(null);
   const [revealInfo, setRevealInfo] = useState(null); 
+  // FIX: Stato per bloccare il doppio click
+  const [hasShot, setHasShot] = useState(false);
 
   useEffect(() => {
     socket.emit('liars_sync');
+    setHasShot(false);
 
     socket.on('liars_hand', (cards) => { 
         setHand(cards); 
@@ -60,6 +63,11 @@ export default function LiarsBarMobile({ socket, view, setView }) {
     };
   }, [socket, setView]);
 
+  // RESET DEL BLOCCO QUANDO CAMBIA LA VISTA
+  useEffect(() => {
+      setHasShot(false);
+  }, [view]);
+
   const toggleCard = (index) => {
     if (!isMyTurn) return; 
     if (selectedIndices.includes(index)) setSelectedIndices(selectedIndices.filter(i => i !== index));
@@ -67,7 +75,13 @@ export default function LiarsBarMobile({ socket, view, setView }) {
   };
   const playCards = () => { if (isMyTurn) socket.emit('liars_play_cards', selectedIndices); };
   const callDoubt = () => { if (isMyTurn) socket.emit('liars_doubt'); };
-  const pullTrigger = () => { socket.emit('liars_trigger'); };
+  
+  // FIX: Funzione di sparo protetta
+  const pullTrigger = () => { 
+      if (hasShot) return; // BLOCCO DOPPIO CLICK
+      setHasShot(true);    // Disabilita UI
+      socket.emit('liars_trigger'); 
+  };
   
   // Rotazione carte a ventaglio
   const getFanRotation = (index, total) => { const angle = 40; const start = -angle / 2; const step = total > 1 ? angle / (total - 1) : 0; return start + (step * index); };
@@ -77,7 +91,8 @@ export default function LiarsBarMobile({ socket, view, setView }) {
   if (view === 'LIARS_DEAD') return <DeadView />;
   if (view === 'LIARS_WON' || view === 'LIARS_GAME_OVER') return <LiarsBarWonView rank={myRank} />;
 
-  if (view === 'LIARS_ROULETTE') return <RouletteView probability={gunStats.probability} onTrigger={pullTrigger} />;
+  // FIX: Passo lo stato hasShot alla vista Roulette
+  if (view === 'LIARS_ROULETTE') return <RouletteView probability={gunStats.probability} onTrigger={pullTrigger} hasShot={hasShot} />;
   if (view === 'LIARS_WAITING_SHOT') return <WaitingShotView />;
 
   // SCHERMATA ROSSA DI ERRORE (DUBBIO FALLITO)
@@ -152,4 +167,40 @@ const LiarsBarWonView = ({rank}) => {
 };
 
 const WaitingShotView = () => (<div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 text-center relative overflow-hidden"><div className="absolute inset-0 bg-red-900/10 blur-[80px] animate-pulse pointer-events-none"></div><div className="text-7xl mb-6 animate-spin-slow text-red-500 drop-shadow-[0_0_25px_red] relative z-10">🎲</div><h2 className="text-3xl font-black text-white mb-3 uppercase tracking-wider relative z-10">Roulette Russa</h2><p className="text-red-300/70 font-medium tracking-widest relative z-10 bg-black/40 px-5 py-2 rounded-full text-sm">Qualcuno sta premendo il grilletto...</p></div>);
-const RouletteView = ({ probability, onTrigger }) => (<div className="min-h-screen bg-[#050505] flex flex-col items-center justify-between p-6 text-center relative overflow-hidden"><div className="absolute inset-0 bg-red-900/20 animate-pulse pointer-events-none"></div><div className="mt-12 z-10"><h1 className="text-4xl font-black text-white uppercase mb-3 tracking-tighter drop-shadow-lg">Tocca a te</h1><p className="text-red-500 font-black text-xl uppercase tracking-[0.3em] drop-shadow-[0_0_15px_red] animate-pulse">Sopravvivi o Muori</p><div className="mt-6 bg-black/60 px-6 py-3 rounded-2xl border border-red-900/50 backdrop-blur-md shadow-xl"><span className="text-red-300/70 uppercase text-[10px] font-bold tracking-widest block mb-1">Probabilità morte</span><span className="text-red-100 font-black text-2xl tracking-wider">{probability}</span></div></div><button onClick={onTrigger} className="w-64 h-64 bg-gradient-to-br from-black to-red-950 rounded-full border-[6px] border-red-600 shadow-[0_0_60px_rgba(220,38,38,0.6)] flex flex-col items-center justify-center active:scale-90 transition-all duration-200 z-10 group hover:shadow-[0_0_100px_rgba(220,38,38,0.9)] hover:border-red-500"><span className="text-7xl group-hover:scale-110 transition mb-3 drop-shadow-2xl">🔫</span><span className="text-3xl font-black text-white uppercase tracking-[0.2em] drop-shadow-lg">SPARA</span></button><div className="mb-10 text-red-300/50 text-xs z-10 font-bold uppercase tracking-[0.4em] bg-black/40 px-5 py-3 rounded-full border border-red-900/20">Premi per scoprire il tuo destino</div></div>);
+
+// FIX: RouletteView aggiornata con il blocco visivo (disabilita bottone se hasShot è true)
+const RouletteView = ({ probability, onTrigger, hasShot }) => (
+    <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-between p-6 text-center relative overflow-hidden">
+        <div className="absolute inset-0 bg-red-900/20 animate-pulse pointer-events-none"></div>
+        <div className="mt-12 z-10">
+            <h1 className="text-4xl font-black text-white uppercase mb-3 tracking-tighter drop-shadow-lg">Tocca a te</h1>
+            <p className="text-red-500 font-black text-xl uppercase tracking-[0.3em] drop-shadow-[0_0_15px_red] animate-pulse">Sopravvivi o Muori</p>
+            <div className="mt-6 bg-black/60 px-6 py-3 rounded-2xl border border-red-900/50 backdrop-blur-md shadow-xl">
+                <span className="text-red-300/70 uppercase text-[10px] font-bold tracking-widest block mb-1">Probabilità morte</span>
+                <span className="text-red-100 font-black text-2xl tracking-wider">{probability}</span>
+            </div>
+        </div>
+        
+        <button 
+            onClick={onTrigger} 
+            disabled={hasShot} // FIX: Disabilita il click
+            className={`
+                w-64 h-64 rounded-full border-[6px] flex flex-col items-center justify-center shadow-[0_0_60px_rgba(220,38,38,0.6)] 
+                transition-all duration-200 z-10 group
+                ${hasShot 
+                    ? 'bg-gray-900 border-gray-700 opacity-50 cursor-not-allowed scale-95' // Stile disabilitato
+                    : 'bg-gradient-to-br from-black to-red-950 border-red-600 hover:shadow-[0_0_100px_rgba(220,38,38,0.9)] hover:border-red-500 active:scale-90'
+                }
+            `}
+        >
+            <span className={`text-7xl transition mb-3 drop-shadow-2xl ${hasShot ? '' : 'group-hover:scale-110'}`}>🔫</span>
+            <span className="text-3xl font-black text-white uppercase tracking-[0.2em] drop-shadow-lg">
+                {hasShot ? '...' : 'SPARA'}
+            </span>
+        </button>
+        
+        <div className="mb-10 text-red-300/50 text-xs z-10 font-bold uppercase tracking-[0.4em] bg-black/40 px-5 py-3 rounded-full border border-red-900/20">
+            Premi per scoprire il tuo destino
+        </div>
+    </div>
+);

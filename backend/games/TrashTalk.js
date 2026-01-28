@@ -12,7 +12,10 @@ export class TrashTalkGame {
     this.currentBattle = null;
     this.roundVotes = {};
     
-    // --- LISTA PROMPT CATTIVI (Round 1 e 2) ---
+    // NUOVO: Mappa per ricordare la frase di ogni giocatore (SessionID -> Frase)
+    this.playerPrompts = {}; 
+
+    // Prompt Normali
     this.normalPrompts = [
       "Il vero motivo per cui Gesù non è più tornato sulla Terra.",
       "Cosa non dovresti mai dire mentre accarezzi un cane guida?",
@@ -48,7 +51,7 @@ export class TrashTalkGame {
       "L'unica cosa che i preti amano più di Dio."
     ];
 
-    // --- LISTA PROMPT FINALI (Tutti contro Tutti) ---
+    // Prompt Finali
     this.finalPrompts = [
         "L'ultima cosa che vorresti vedere mentre sei seduto sul water.",
         "Il modo più creativo per nascondere un cadavere.",
@@ -66,8 +69,82 @@ export class TrashTalkGame {
     this.players = currentPlayers.map(p => ({ ...p, score: 0, answer: '', isConnected: true }));
     this.gameState = 'LOBBY';
     this.round = 0;
+    this.playerPrompts = {}; // Reset memoria prompt
     this.io.emit('set_view', 'TRASHTALK_LOBBY');
     this.emitState();
+  }
+
+  // --- RICONNESSIONE FIXATA ---
+ syncSinglePlayer(socket, player) {
+      // 1. Aggiorna socket ID interno
+      const p = this.players.find(x => x.sessionId === player.sessionId);
+      if (p) p.id = socket.id;
+
+      if (this.gameState === 'WRITING') {
+          if (this.answers[player.sessionId]) {
+              // Se ha già risposto -> Attesa
+              socket.emit('set_view', 'TRASHTALK_WAITING');
+          } else {
+              // Se deve ancora rispondere -> RECUPERA PROMPT TRAMITE SESSION ID
+              const savedPrompt = this.playerPrompts[player.sessionId];
+              
+              if (savedPrompt) {
+                  socket.emit('trashtalk_prompt', savedPrompt);
+                  socket.emit('set_view', 'TRASHTALK_WRITING');
+              } else {
+                  // Fallback estremo se il prompt è perso (non dovrebbe accadere)
+                  console.log("⚠️ Prompt perso per", player.name);
+                  socket.emit('trashtalk_prompt', "Scrivi qualcosa di divertente!");
+                  socket.emit('set_view', 'TRASHTALK_WRITING');
+              }
+          }
+      } 
+      else if (this.gameState === 'VOTING') {
+          // Logica per rimandare i dati del voto (già corretta nel passo precedente)
+           if (this.currentBattle) {
+               if (this.currentBattle.type === 'ALL') {
+                    // Ricostruzione dati finale
+                    const allAnswers = this.players.map(pl => ({
+                        id: pl.id,
+                        answer: this.answers[pl.sessionId] || "...",
+                        name: pl.name
+                    }));
+                    const finalPrompt = Object.values(this.playerPrompts)[0] || "FINALE";
+                    socket.emit('trashtalk_battle_start', {
+                        type: 'ALL_VS_ALL',
+                        prompt: finalPrompt,
+                        candidates: allAnswers
+                    });
+               } else {
+                   // 1vs1
+                   const battleData = {
+                      type: '1VS1',
+                      prompt: this.currentBattle.prompt, 
+                      p1: { id: this.currentBattle.p1, answer: this.answers[this.currentBattle.p1_session] },
+                      p2: { id: this.currentBattle.p2, answer: this.answers[this.currentBattle.p2_session] }
+                   };
+                   socket.emit('trashtalk_battle_start', battleData);
+               }
+               socket.emit('set_view', 'TRASHTALK_VOTE');
+           }
+      }
+      else {
+          socket.emit('set_view', 'TRASHTALK_LOBBY');
+      }
+  }
+
+  removePlayer(sessionId) {
+      this.players = this.players.filter(p => p.sessionId !== sessionId);
+      delete this.answers[sessionId];
+      delete this.playerPrompts[sessionId]; // Pulizia
+      this.emitState();
+
+      const activePlayers = this.players.filter(p => p.isConnected);
+      if (this.gameState === 'WRITING') {
+          if (Object.keys(this.answers).length >= activePlayers.length && activePlayers.length > 0) {
+              setTimeout(() => this.startVotingPhase(), 1000);
+          }
+      }
   }
 
   startGame() {
@@ -75,16 +152,23 @@ export class TrashTalkGame {
     this.startWritingPhase();
   }
 
-  // --- FASE 1: SCRITTURA ---
   startWritingPhase() {
     this.gameState = 'WRITING';
     this.answers = {};
+    this.playerPrompts = {}; // Reset per il nuovo round
     
     const isFinalRound = this.round === this.TOTAL_ROUNDS;
     
     if (isFinalRound) {
-        const prompt = this.finalPrompts[Math.floor(Math.random() * this.finalPrompts.length)];
+        // ROUND FINALE: Stesso prompt per tutti
+        const prompt = "ROUND FINALE: " + this.finalPrompts[Math.floor(Math.random() * this.finalPrompts.length)];
         this.currentBattleIndex = -1; 
+        
+        // Salva prompt per tutti
+        this.players.forEach(p => {
+            this.playerPrompts[p.sessionId] = prompt;
+        });
+
         this.io.emit('trashtalk_prompt', prompt); 
     } 
     else {
@@ -105,26 +189,37 @@ export class TrashTalkGame {
           
           const prompt = this.normalPrompts[Math.floor(Math.random() * this.normalPrompts.length)];
           
-          this.battles.push({ p1: p1.id, p2: p2.id, prompt: prompt });
+          // Salva prompt per il refresh
+          this.playerPrompts[p1.sessionId] = prompt;
+          this.playerPrompts[p2.sessionId] = prompt;
+          
+          // Salva anche sessionId nella battaglia per robustezza
+          this.battles.push({ 
+              p1: p1.id, p1_session: p1.sessionId,
+              p2: p2.id, p2_session: p2.sessionId,
+              prompt: prompt 
+          });
 
           this.io.to(p1.id).emit('trashtalk_prompt', prompt);
           this.io.to(p2.id).emit('trashtalk_prompt', prompt);
       }
   }
 
-  handleAnswer(playerId, text) {
+  handleAnswer(socketId, text) {
+      const p = this.players.find(x => x.id === socketId);
+      if (!p) return;
       if (this.gameState !== 'WRITING') return;
-      this.answers[playerId] = text.toUpperCase();
-      this.io.to(playerId).emit('set_view', 'TRASHTALK_WAITING');
+      
+      this.answers[p.sessionId] = text.toUpperCase();
+      this.io.to(socketId).emit('set_view', 'TRASHTALK_WAITING');
       this.emitState();
-
+      
       const activePlayers = this.players.filter(p => p.isConnected);
       if (Object.keys(this.answers).length >= activePlayers.length) {
           setTimeout(() => this.startVotingPhase(), 1000);
       }
   }
 
-  // --- FASE 2: VOTAZIONE ---
   startVotingPhase() {
       this.gameState = 'VOTING';
       this.emitState();
@@ -146,11 +241,15 @@ export class TrashTalkGame {
       this.currentBattle = this.battles[this.currentBattleIndex];
       this.roundVotes = {};
 
+      // Recupera risposte usando SessionID salvati nella battaglia
+      const p1Answer = this.answers[this.currentBattle.p1_session];
+      const p2Answer = this.answers[this.currentBattle.p2_session];
+
       const battleData = {
           type: '1VS1',
           prompt: this.currentBattle.prompt, 
-          p1: { id: this.currentBattle.p1, answer: this.answers[this.currentBattle.p1] },
-          p2: { id: this.currentBattle.p2, answer: this.answers[this.currentBattle.p2] }
+          p1: { id: this.currentBattle.p1, answer: p1Answer },
+          p2: { id: this.currentBattle.p2, answer: p2Answer }
       };
 
       this.io.emit('trashtalk_battle_start', battleData);
@@ -194,11 +293,12 @@ export class TrashTalkGame {
 
       const allAnswers = this.players.map(p => ({
           id: p.id,
-          answer: this.answers[p.id] || "...",
+          answer: this.answers[p.sessionId] || "...", // FIX: Usa SessionID
           name: p.name
       }));
 
-      const finalPrompt = "ROUND FINALE: " + (this.answers[this.players[0].id]?.prompt || "RISPONDETE!");
+      // Prendi il prompt dal primo giocatore (è uguale per tutti)
+      const finalPrompt = Object.values(this.playerPrompts)[0] || "FINALE";
 
       const battleData = {
           type: 'ALL_VS_ALL',
@@ -228,11 +328,9 @@ export class TrashTalkGame {
 
   handleVote(voterId, targetId) {
       if (this.gameState !== 'VOTING') return;
-
-      if (this.currentBattle && this.currentBattle.p1 && this.currentBattle.p2) {
+      if (this.currentBattle && this.currentBattle.type === '1VS1') {
           if (voterId === this.currentBattle.p1 || voterId === this.currentBattle.p2) return;
       }
-
       if (voterId === targetId) return;
       this.roundVotes[voterId] = targetId;
   }

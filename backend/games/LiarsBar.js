@@ -8,9 +8,13 @@ export class LiarsBarGame {
     this.requiredValue = 'Q';  
     this.lastPlayerId = null; 
     this.victimId = null;      
-    this.bulletChamber = {};
+    this.bulletChamber = {}; 
+    this.hands = {}; 
     this.finishedRank = 0; 
     this.nextRoundStarterId = null; 
+    
+    // --- NUOVA VARIABILE ANTI-SPAM ---
+    this.isProcessingShot = false; 
   }
 
   initGame(currentPlayers) {
@@ -25,37 +29,60 @@ export class LiarsBarGame {
     this.gameState = 'LOBBY';
     this.tableStack = [];
     this.bulletChamber = {};
+    this.hands = {};
     this.finishedRank = 0;
+    this.isProcessingShot = false; // Reset bandierina
     
     this.players.forEach(p => {
-        this.bulletChamber[p.id] = { current: 0, bullet: Math.floor(Math.random() * 6) };
+        this.bulletChamber[p.sessionId] = { current: 0, bullet: Math.floor(Math.random() * 6) };
         this.io.to(p.id).emit('set_view', 'LIARS_LOBBY');
     });
   }
 
-  reconnectPlayer(socket, globalPlayer, oldId) {
-      const gamePlayer = this.players.find(p => p.name === globalPlayer.name);
+  reconnectPlayer(socket, player, oldId) {
+      const gamePlayer = this.players.find(p => p.sessionId === player.sessionId);
       if (!gamePlayer) return false;
 
-      const newId = socket.id;
-      gamePlayer.id = newId;
+      const oldSocketId = gamePlayer.id;
+      gamePlayer.id = socket.id;
 
-      if (this.bulletChamber[oldId]) {
-          this.bulletChamber[newId] = this.bulletChamber[oldId];
-          delete this.bulletChamber[oldId];
-      }
-
-      if (this.lastPlayerId === oldId) this.lastPlayerId = newId;
-      if (this.victimId === oldId) this.victimId = newId;
-      if (this.nextRoundStarterId === oldId) this.nextRoundStarterId = newId;
+      if (this.lastPlayerId === oldSocketId) this.lastPlayerId = socket.id;
+      if (this.victimId === oldSocketId) this.victimId = socket.id;
+      if (this.nextRoundStarterId === oldSocketId) this.nextRoundStarterId = socket.id;
 
       this.tableStack.forEach(play => {
-          if (play.playerId === oldId) play.playerId = newId;
+          if (play.playerId === oldSocketId) play.playerId = socket.id;
       });
 
       this.setupListeners(socket);
       this.syncSinglePlayer(socket, gamePlayer);
       return true;
+  }
+
+  removePlayer(sessionId) {
+      const indexToRemove = this.players.findIndex(p => p.sessionId === sessionId);
+      if (indexToRemove === -1) return;
+
+      console.log(`🃏 Liar's Bar: Giocatore uscito index ${indexToRemove}`);
+      const wasHisTurn = (this.turnIndex === indexToRemove);
+
+      this.players.splice(indexToRemove, 1);
+      delete this.bulletChamber[sessionId];
+      delete this.hands[sessionId];
+
+      if (indexToRemove < this.turnIndex) {
+          this.turnIndex--; 
+      }
+      if (this.turnIndex >= this.players.length) {
+          this.turnIndex = 0;
+      }
+
+      if (wasHisTurn) {
+          this.nextTurn();
+      }
+
+      if (this.checkWinCondition()) return;
+      this.emitGameState();
   }
 
   syncSinglePlayer(socket, player) {
@@ -69,7 +96,7 @@ export class LiarsBarGame {
 
       if (this.gameState === 'ROULETTE') {
           if (player.id === this.victimId) {
-             const chamber = this.bulletChamber[player.id];
+             const chamber = this.bulletChamber[player.sessionId];
              const prob = chamber ? `1 su ${6 - chamber.current}` : "?";
              socket.emit('liars_gun_stats', { probability: prob });
              socket.emit('set_view', 'LIARS_ROULETTE');
@@ -79,7 +106,8 @@ export class LiarsBarGame {
       } else {
           if(this.gameState === 'LOBBY') socket.emit('set_view', 'LIARS_LOBBY');
           else {
-              socket.emit('liars_hand', player.hand);
+              const savedHand = this.hands[player.sessionId] || player.hand;
+              socket.emit('liars_hand', savedHand);
               socket.emit('set_view', 'LIARS_HAND');
           }
       }
@@ -105,6 +133,12 @@ export class LiarsBarGame {
   }
 
   setupListeners(socket) {
+    socket.removeAllListeners('liars_start');
+    socket.removeAllListeners('liars_sync');
+    socket.removeAllListeners('liars_play_cards');
+    socket.removeAllListeners('liars_doubt');
+    socket.removeAllListeners('liars_trigger');
+
     socket.on('liars_start', () => this.startGame());
     socket.on('liars_sync', () => {
         const player = this.players.find(p => p.id === socket.id);
@@ -113,7 +147,6 @@ export class LiarsBarGame {
     socket.on('liars_play_cards', (indices) => this.handlePlayCards(socket.id, indices));
     socket.on('liars_doubt', () => this.handleDoubt(socket.id));
     socket.on('liars_trigger', () => this.handleTrigger(socket.id));
-    socket.on('liars_reconnect', () => {}); 
   }
 
   startGame() {
@@ -122,10 +155,13 @@ export class LiarsBarGame {
     this.tableStack = [];
     this.requiredValue = this.pickRandomValue(); 
     this.finishedRank = 0;
+    this.isProcessingShot = false;
 
     this.players.forEach(player => {
       if (!player.isAlive) return;
-      player.hand = this.generateHand();
+      const newHand = this.generateHand();
+      player.hand = newHand;
+      this.hands[player.sessionId] = newHand; 
       this.io.to(player.id).emit('liars_hand', player.hand);
       this.io.to(player.id).emit('set_view', 'LIARS_HAND');
     });
@@ -153,12 +189,15 @@ export class LiarsBarGame {
 
       selectedIndices.sort((a, b) => b - a);
       const playedCards = [];
+      const sessionHand = this.hands[player.sessionId];
+      
       selectedIndices.forEach(index => {
-          if (player.hand[index]) {
-              playedCards.push(player.hand[index]);
-              player.hand.splice(index, 1);
+          if (sessionHand[index]) {
+              playedCards.push(sessionHand[index]);
+              sessionHand.splice(index, 1);
           }
       });
+      player.hand = sessionHand;
 
       this.tableStack.push({
           player: player.name,
@@ -168,11 +207,11 @@ export class LiarsBarGame {
       });
 
       this.lastPlayerId = player.id; 
-      this.io.to(player.id).emit('liars_hand', player.hand);
+      this.io.to(player.id).emit('liars_hand', sessionHand);
       this.nextTurn();
   }
 
-  handleDoubt(doubterId) {
+   handleDoubt(doubterId) {
       if (this.tableStack.length === 0) return;
       if (this.gameState !== 'PLAYING') return;
 
@@ -190,7 +229,7 @@ export class LiarsBarGame {
                honestPlayer.rank = this.finishedRank;
                this.io.to(honestPlayer.id).emit('set_view', 'LIARS_WON');
                this.io.to(honestPlayer.id).emit('liars_rank', honestPlayer.rank);
-           }
+            }
       }
 
       this.nextRoundStarterId = winnerId;
@@ -202,16 +241,20 @@ export class LiarsBarGame {
           loserId: loserId
       });
 
-      // --- TEMPO VELOCE: 3s suspense + 4s lettura = 7s totali ---
       setTimeout(() => {
           this.startRoulette(loserId);
-      }, 3000); 
+      }, 1000); 
   }
 
   startRoulette(victimId) {
       this.gameState = 'ROULETTE';
       this.victimId = victimId;
-      const chamber = this.bulletChamber[victimId];
+      this.isProcessingShot = false; // RESET BANDIERINA QUANDO INIZIA ROULETTE
+      
+      const victimPlayer = this.players.find(p => p.id === victimId);
+      if(!victimPlayer) return;
+
+      const chamber = this.bulletChamber[victimPlayer.sessionId];
       const prob = chamber ? `1 su ${6 - chamber.current}` : "?";
 
       this.emitGameState();
@@ -227,40 +270,55 @@ export class LiarsBarGame {
   }
 
   handleTrigger(playerId) {
+      // --- 1. CONTROLLO ANTI-SPAM ---
+      // Se stiamo già processando uno sparo, IGNORA qualsiasi altro click
+      if (this.isProcessingShot) {
+          console.log("⚠️ Click ignorato: sparo già in corso.");
+          return; 
+      }
+
       if (this.gameState !== 'ROULETTE' || playerId !== this.victimId) return;
-      const chamber = this.bulletChamber[playerId];
+      
+      // ALZA LA BANDIERINA: Da ora in poi ignora altri click
+      this.isProcessingShot = true; 
+
+      const player = this.players.find(p => p.id === playerId);
+      if(!player) {
+          this.isProcessingShot = false; // Sicurezza
+          return;
+      }
+
+      const chamber = this.bulletChamber[player.sessionId];
       const isDead = chamber.current === chamber.bullet;
 
-      // 1. Manda subito l'evento alla TV per iniziare lo SPIN
       this.io.emit('liars_shot_result', { status: isDead ? 'DEAD' : 'ALIVE', playerId });
 
-      // 2. TIMING SINCRONIZZATO PER IL TELEFONO
       if (isDead) {
-          const player = this.players.find(p => p.id === playerId);
           player.isAlive = false;
-          
-          // ASPETTA 3 SECONDI (Tempo dello spin sulla TV) prima di dire al telefono che è morto
-          // Questo serve come backup se il frontend mobile non usa il setTimeout
           setTimeout(() => {
               this.io.to(playerId).emit('set_view', 'LIARS_DEAD');
           }, 3000); 
 
-          // Resetta il round dopo l'animazione completa (3s spin + ~3s morte = ~6s)
           setTimeout(() => { if (!this.checkWinCondition()) this.resetRoundAfterShot(true); }, 6000);
       } else {
           chamber.current += 1;
-          // Resetta il round velocemente (2.8s spin + 2s respiro = ~5s)
           setTimeout(() => this.resetRoundAfterShot(false), 5000);
       }
   }
 
   resetRoundAfterShot(victimDied) {
+      this.isProcessingShot = false; // --- SBLOCCA: ORA SI PUÒ GIOCARE DI NUOVO ---
+      
       this.gameState = 'PLAYING';
       this.tableStack = [];
       this.requiredValue = this.pickRandomValue();
+      
       this.players.forEach(p => {
           if (p.isAlive && !p.isFinished) {
-              p.hand = this.generateHand();
+              const newHand = this.generateHand();
+              p.hand = newHand;
+              this.hands[p.sessionId] = newHand; 
+              
               this.io.to(p.id).emit('liars_hand', p.hand);
               this.io.to(p.id).emit('set_view', 'LIARS_HAND');
           }
@@ -273,7 +331,8 @@ export class LiarsBarGame {
           this.emitGameState();
       }
   }
-
+  
+  // ... (resto delle funzioni checkWinCondition e nextTurn identiche a prima) ...
   nextTurn() {
       let attempts = 0;
       do {
