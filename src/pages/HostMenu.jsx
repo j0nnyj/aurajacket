@@ -35,7 +35,6 @@ export default function HostMenu({ socket }) {
   };
 
   const joinUrl = `http://${serverInfo.ip}:${serverInfo.port}`;
-  // QR Code pulito per massima leggibilità, il design è intorno
   const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=5&data=${joinUrl}`;
 
   return (
@@ -43,9 +42,7 @@ export default function HostMenu({ socket }) {
         
         {/* --- BACKGROUND SYNTHWAVE --- */}
         <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-            {/* Sole Retrò */}
             <div className="absolute top-[-10%] left-[20%] w-[60vw] h-[60vw] bg-gradient-to-b from-yellow-500 via-fuchsia-600 to-purple-900 rounded-full blur-[150px] opacity-40"></div>
-            {/* Griglia Pavimento Prospettico */}
             <div className="absolute bottom-0 w-full h-[60vh] bg-[linear-gradient(to_top,rgba(255,0,255,0.3)_1px,transparent_1px),linear-gradient(to_right,rgba(255,0,255,0.3)_1px,transparent_1px)] bg-[size:40px_40px] [transform:perspective(1000px)_rotateX(60deg)] origin-bottom opacity-30 after:content-[''] after:absolute after:inset-0 after:bg-gradient-to-t after:from-[#090014] after:via-transparent after:to-transparent"></div>
         </div>
 
@@ -62,12 +59,10 @@ export default function HostMenu({ socket }) {
             </div>
             
             <div className="flex gap-4">
-                 {/* Bottone Mobile QR */}
                  <button onClick={() => setShowQrMobile(!showQrMobile)} className="md:hidden relative group px-6 py-3 bg-black border border-fuchsia-500 text-fuchsia-400 font-bold uppercase tracking-widest text-xs overflow-hidden">
                     <span className="relative z-10 group-hover:text-white transition-colors">{showQrMobile ? 'CHIUDI PORTALE' : 'APRI PORTALE'}</span>
                     <div className="absolute inset-0 bg-fuchsia-600 translate-y-full group-hover:translate-y-0 transition-transform"></div>
                  </button>
-                 {/* Bottone Reset */}
                  <button onClick={resetSession} className="relative group px-6 py-3 bg-black border border-red-600 text-red-500 font-bold uppercase tracking-widest text-xs overflow-hidden hover:shadow-[0_0_30px_rgba(220,38,38,0.5)] transition-shadow">
                     <span className="relative z-10 group-hover:text-white transition-colors">RESET SYSTEM</span>
                     <div className="absolute inset-0 bg-red-600 translate-y-full group-hover:translate-y-0 transition-transform"></div>
@@ -80,7 +75,8 @@ export default function HostMenu({ socket }) {
             
             {/* SINISTRA: GIOCHI OLOGRAFICI */}
             <div className="flex-[3] flex items-center">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
+                {/* Modifica griglia per supportare 4 giochi */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4 gap-6 w-full">
                     
                     <SynthCard 
                         title="IMPOSTER"
@@ -106,33 +102,40 @@ export default function HostMenu({ socket }) {
                         onClick={() => startGame('/host/trashtalk', 'TRASHTALK')}
                     />
 
+                    {/* NUOVO GIOCO: IS IT YOU? */}
+                    <SynthCard 
+                        title="IS IT YOU?"
+                        tagline="Foto & Disegni"
+                        color="fuchsia" // Nuovo colore definito sotto
+                        icon="📸"
+                        onClick={() => startGame('/host/isityou', 'IS_IT_YOU')}
+                    />
+
                 </div>
             </div>
 
-            {/* DESTRA: PORTALE QR (Visibile su Desktop o su Mobile se attivato) */}
+            {/* DESTRA: PORTALE QR */}
             <AnimatePresence>
                 {(window.innerWidth >= 768 || showQrMobile) && (
                     <motion.div 
                         initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
                         className={`
-                            ${showQrMobile ? 'fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-6' : 'flex-1 flex flex-col justify-center max-w-md'}
+                            ${showQrMobile ? 'fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-6' : 'flex-1 flex flex-col justify-center max-w-sm lg:max-w-md'}
                         `}
                         onClick={() => showQrMobile && setShowQrMobile(false)}
                     >
-                        <div className="relative group cursor-pointer">
-                            {/* Effetti Neon Portale */}
+                        <div className="relative group cursor-pointer w-full">
                             <div className="absolute -inset-1 bg-gradient-to-r from-cyan-500 via-fuchsia-500 to-yellow-500 rounded-3xl blur-xl opacity-70 group-hover:opacity-100 group-hover:blur-2xl transition-all duration-500 animate-pulse-slow"></div>
                             <div className="absolute -inset-px bg-gradient-to-r from-cyan-400 via-fuchsia-400 to-yellow-400 rounded-[1.6rem] opacity-100 z-0"></div>
                             
                             <div className="relative z-10 bg-[#090014] rounded-3xl p-8 flex flex-col items-center text-center border-[3px] border-black/50 h-full">
                                 <h3 className="text-2xl font-black italic uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-fuchsia-400 mb-6 drop-shadow-[0_0_10px_rgba(0,255,255,0.5)]">
-                                     DATA PORTAL 
+                                    DATA PORTAL 
                                 </h3>
                                 
                                 <div className="bg-white p-3 rounded-xl shadow-[0_0_30px_rgba(255,255,255,0.2)] mb-6 group-hover:scale-105 transition-transform relative overflow-hidden">
-                                     {/* Linea di scansione */}
                                     <div className="absolute top-0 left-0 w-full h-[2px] bg-fuchsia-500 shadow-[0_0_10px_#d946ef] animate-scan pointer-events-none z-20"></div>
-                                    <img src={qrUrl} alt="Join QR" className="w-48 h-48 md:w-64 md:h-64 object-contain relative z-10" />
+                                    <img src={qrUrl} alt="Join QR" className="w-48 h-48 md:w-56 md:h-56 object-contain relative z-10" />
                                 </div>
 
                                 <div className="w-full bg-black/80 border-2 border-fuchsia-500/50 p-3 rounded-lg">
@@ -148,9 +151,8 @@ export default function HostMenu({ socket }) {
             </AnimatePresence>
         </div>
 
-        {/* --- FOOTER ROSTER (Cartucce Dati) --- */}
+        {/* --- FOOTER ROSTER --- */}
         <div className="fixed bottom-0 left-0 right-0 h-24 bg-[#090014]/80 backdrop-blur-xl border-t-2 border-fuchsia-500/30 z-30 flex flex-col">
-             {/* Linea luminosa superiore */}
             <div className="w-full h-[2px] bg-gradient-to-r from-cyan-500 via-fuchsia-500 to-yellow-500 shadow-[0_0_15px_#d946ef]"></div>
             
             <div className="flex-1 flex items-center px-6 overflow-x-auto custom-scrollbar-x py-2">
@@ -172,7 +174,6 @@ export default function HostMenu({ socket }) {
                             className="group relative flex-shrink-0 flex items-center gap-3 bg-black/60 pl-3 pr-5 py-2 mx-2 rounded-md border-2 border-cyan-500/50 hover:border-red-500 hover:bg-red-950/50 transition-all cursor-pointer overflow-hidden shadow-[0_0_15px_rgba(0,255,255,0.1)] hover:shadow-[0_0_25px_rgba(220,38,38,0.3)]"
                             title="Clicca per espellere"
                         >
-                            {/* Effetto "KICK" al passaggio del mouse */}
                             <div className="absolute inset-0 bg-red-600 mix-blend-overlay opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
                             
                             <div className="text-3xl relative z-10 drop-shadow-md">{p.avatar}</div>
@@ -191,7 +192,6 @@ export default function HostMenu({ socket }) {
             </div>
         </div>
 
-        {/* STILI CSS AGGIUNTIVI */}
         <style>{`
             .custom-scrollbar-x::-webkit-scrollbar { height: 6px; }
             .custom-scrollbar-x::-webkit-scrollbar-track { background: rgba(255,0,255,0.1); }
@@ -206,9 +206,9 @@ export default function HostMenu({ socket }) {
   );
 }
 
-// --- COMPONENTE SYNTH-CARD (Le schede dei giochi) ---
+// --- COMPONENTE SYNTH-CARD ---
 function SynthCard({ title, tagline, color, icon, onClick }) {
-    // Mappatura colori per i diversi stati (cyan, red, yellow)
+    // Definizione colori, aggiunto 'fuchsia' per IsItYou
     const colors = {
         cyan: {
             border: 'border-cyan-500',
@@ -230,31 +230,34 @@ function SynthCard({ title, tagline, color, icon, onClick }) {
             text: 'text-yellow-400',
             bgGrad: 'from-yellow-400/20 via-yellow-900/10 to-transparent',
             btn: 'bg-yellow-500 group-hover:bg-yellow-400'
+        },
+        fuchsia: {
+            border: 'border-fuchsia-500',
+            shadow: 'hover:shadow-[0_0_40px_rgba(217,70,239,0.6)]',
+            text: 'text-fuchsia-400',
+            bgGrad: 'from-fuchsia-500/20 via-purple-900/10 to-transparent',
+            btn: 'bg-fuchsia-600 group-hover:bg-fuchsia-500'
         }
     };
-    const c = colors[color];
+    const c = colors[color] || colors.cyan;
 
     return (
         <motion.button 
             whileHover={{ scale: 1.03, rotateX: 5, rotateY: -5 }}
             whileTap={{ scale: 0.98 }}
             onClick={onClick}
-            // Su desktop usiamo la prospettiva 3D
             className={`
                 group relative w-full aspect-[3/4] md:aspect-[4/5] rounded-2xl p-[3px] transition-all duration-300 cursor-pointer text-left
                 md:[transform:perspective(1000px)_rotateX(10deg)_rotateY(-5deg)] md:hover:[transform:perspective(1000px)_rotateX(0deg)_rotateY(0deg)]
                 bg-black border-2 ${c.border} ${c.shadow}
             `}
         >
-            {/* Sfondo interno con gradiente e pattern */}
             <div className="absolute inset-0 bg-[#090014] rounded-[13px] overflow-hidden z-0">
                 <div className={`absolute inset-0 bg-gradient-to-br ${c.bgGrad} opacity-50 group-hover:opacity-80 transition-opacity`}></div>
                 <div className="absolute inset-0 opacity-30 bg-[url('https://www.transparenttextures.com/patterns/circuit-board.png')] bg-[size:100px]"></div>
             </div>
 
-            {/* Contenuto */}
             <div className="relative z-10 h-full flex flex-col justify-between p-6">
-                {/* Header Card */}
                 <div className="flex justify-between items-start">
                     <div className={`inline-block px-3 py-1 rounded-sm border ${c.border} bg-black/50 backdrop-blur-sm text-[10px] font-black uppercase tracking-[0.2em] ${c.text} glow-text`}>
                         ARCADE UNIT
@@ -264,9 +267,8 @@ function SynthCard({ title, tagline, color, icon, onClick }) {
                     </div>
                 </div>
 
-                {/* Titolo Grande */}
                 <div className="mt-auto mb-6">
-                    <h2 className={`text-4xl md:text-5xl font-black italic uppercase tracking-tighter leading-none drop-shadow-lg ${c.text} glow-text scale-y-110`}>
+                    <h2 className={`text-3xl md:text-5xl font-black italic uppercase tracking-tighter leading-none drop-shadow-lg ${c.text} glow-text scale-y-110`}>
                         {title}
                     </h2>
                     <p className="text-white/70 font-bold uppercase tracking-widest text-xs mt-2 pl-1">
@@ -274,13 +276,11 @@ function SynthCard({ title, tagline, color, icon, onClick }) {
                     </p>
                 </div>
 
-                {/* Bottone "START" finto */}
                 <div className={`w-full py-3 text-center rounded-sm font-black uppercase tracking-[0.3em] text-black text-sm transition-all shadow-[0_0_15px_currentColor] ${c.btn}`}>
                     <span className="group-hover:animate-pulse">INSERT START</span>
                 </div>
             </div>
 
-            {/* Effetto Scanline Overlay */}
             <div className="absolute inset-0 pointer-events-none bg-[linear-gradient(to_bottom,transparent_50%,rgba(0,0,0,0.4)_50%)] bg-[size:100%_4px] z-20 opacity-20"></div>
         </motion.button>
     );

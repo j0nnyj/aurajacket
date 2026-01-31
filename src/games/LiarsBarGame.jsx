@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-// AUDIO MANAGER (Solo suoni essenziali)
+// AUDIO MANAGER (Assicurati che il file esista o commenta se non serve)
 import { playSound, stopAll } from '../utils/AudioManager';
 
 export default function LiarsBarGame({ socket }) {
@@ -13,8 +13,8 @@ export default function LiarsBarGame({ socket }) {
   const [tableData, setTableData] = useState(null);
   
   // STATI VISIVI
-  const [revealData, setRevealData] = useState(null);
-  const [shotResult, setShotResult] = useState(null);
+  const [revealData, setRevealData] = useState(null); // Dati fase "Beccato!"
+  const [shotResult, setShotResult] = useState(null); // Dati fase "Bang/Click"
   const [isSpinning, setIsSpinning] = useState(false); 
   
   const prevTableCountRef = useRef(0);
@@ -28,40 +28,38 @@ export default function LiarsBarGame({ socket }) {
     
     socket.on('liars_update_table', (data) => {
         setTableData(data); 
-        
+        setPhase(data.phase);
+
+        // GESTIONE ANIMAZIONE CARTE LANCIATE
         const prevCount = prevTableCountRef.current;
         if (data.tableCount > prevCount) {
             const diff = data.tableCount - prevCount;
             const actorIndex = data.players.findIndex(p => p.id === data.lastActorId);
             setLastThrow({ id: Date.now(), fromIndex: actorIndex, count: diff });
+            playSound('card_slide'); // Suono carte se hai l'audio
         } else if (data.tableCount === 0) {
             setLastThrow({ id: 0, fromIndex: -1, count: 0 });
         }
         prevTableCountRef.current = data.tableCount;
 
+        // GESTIONE FASE: REVEAL (RIVELAZIONE)
+        if (data.phase === 'REVEAL' && data.revealData) {
+            setRevealData(data.revealData);
+            // Non usiamo setTimeout qui per nasconderlo, perché il backend 
+            // cambierà fase (a ROULETTE) dopo 5 secondi, facendo sparire l'overlay da solo.
+        } else {
+            setRevealData(null);
+        }
+
+        // GESTIONE ALTRE FASI
         if (data.phase === 'LOBBY') {
-            setPhase('LOBBY');
             stopAll();
         } 
         else if (data.phase === 'GAME_OVER') {
-            setPhase('GAME_OVER');
-            playSound('win'); // Suono vittoria
-        }
-        else {
-            setPhase(data.phase);
+            playSound('win'); 
         }
     });
 
-    // --- REVEAL (SOLO VISIVO, VELOCE 1.5s) ---
-    socket.on('liars_reveal', (data) => { 
-        // Nessun suono. Aspettiamo 1.5 secondi per creare un minimo di stacco.
-        setTimeout(() => {
-            setRevealData(data); 
-            // Rimane a schermo per 2.5 secondi
-            setTimeout(() => setRevealData(null), 2500); 
-        }, 1500); 
-    });
-    
     // --- ROULETTE (CON SUONI SPIN & BANG) ---
     socket.on('liars_shot_result', (data) => { 
         playSound('spin');
@@ -85,11 +83,10 @@ export default function LiarsBarGame({ socket }) {
     return () => {
         socket.off('update_player_list');
         socket.off('liars_update_table');
-        socket.off('liars_reveal');
         socket.off('liars_shot_result');
         stopAll();
     };
-  }, [socket, phase]);
+  }, [socket]);
 
   const startGame = () => { 
       if(players.length>=2) {
@@ -109,7 +106,7 @@ export default function LiarsBarGame({ socket }) {
       return positions[index % 4];
   };
 
-  // --- LOBBY ---
+  // --- 1. LOBBY VIEW ---
   if (phase === 'LOBBY') {
     return (
       <div className="min-h-screen bg-[#050505] text-white flex flex-col items-center justify-center p-10 font-sans relative overflow-hidden">
@@ -133,7 +130,7 @@ export default function LiarsBarGame({ socket }) {
     );
   }
 
-  // --- GAME OVER ---
+  // --- 2. GAME OVER VIEW ---
   if (phase === 'GAME_OVER') {
       const rankedPlayers = tableData?.players.filter(p => p.rank).sort((a,b) => a.rank - b.rank);
       const others = tableData?.players.filter(p => !p.rank && !p.isAlive) || [];
@@ -156,7 +153,7 @@ export default function LiarsBarGame({ socket }) {
       );
   }
 
-  // --- 3. MAIN GAME ---
+  // --- 3. MAIN GAME VIEW ---
   return (
     <div className="min-h-screen bg-[#020202] relative overflow-hidden font-sans perspective-[1200px]">
         {/* TAVOLO DI GIOCO */}
@@ -261,21 +258,33 @@ export default function LiarsBarGame({ socket }) {
             )}
         </AnimatePresence>
 
-        {/* OVERLAY: REVEAL (SOLO VISIVO) */}
+        {/* OVERLAY: REVEAL (AGGIORNATO CON NUOVI DATI) */}
         <AnimatePresence>
             {revealData && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-50 bg-black/95 flex flex-col items-center justify-center">
                     <h2 className="text-[10rem] font-black mb-16 font-serif tracking-widest leading-none">
-                        {revealData.result === 'LIE' ? <span className="text-transparent bg-clip-text bg-gradient-to-b from-red-500 to-red-800 drop-shadow-[0_0_80px_red]">BUGIA!</span> : <span className="text-transparent bg-clip-text bg-gradient-to-b from-green-400 to-green-700 drop-shadow-[0_0_80px_green]">VERITÀ!</span>}
+                        {revealData.isLie ? (
+                            <span className="text-transparent bg-clip-text bg-gradient-to-b from-red-500 to-red-800 drop-shadow-[0_0_80px_red]">BUGIA!</span>
+                        ) : (
+                            <span className="text-transparent bg-clip-text bg-gradient-to-b from-green-400 to-green-700 drop-shadow-[0_0_80px_green]">VERITÀ!</span>
+                        )}
                     </h2>
+                    <h3 className="text-4xl text-white mb-10 font-bold uppercase tracking-widest">
+                        {revealData.message}
+                    </h3>
+                    
                     <div className="flex gap-10 perspective-[1000px]">
                         {revealData.cards.map((c, i) => (
-                            <motion.div key={i} initial={{ rotateY: 180, scale: 0.5 }} animate={{ rotateY: 0, scale: 1 }} transition={{ delay: i*0.1, type: "spring" }} className={`w-56 h-80 rounded-2xl flex items-center justify-center text-9xl border-[6px] shadow-[0_0_40px_rgba(0,0,0,0.8)] ${c.type === 'JOLLY' ? 'bg-black border-red-600 text-red-600 shadow-[0_0_30px_red]' : 'bg-[#1a1a1a] text-white border-orange-500/30'}`}>
-                                {c.type === 'JOLLY' ? '💀' : c.type}
+                            <motion.div key={i} initial={{ rotateY: 180, scale: 0.5 }} animate={{ rotateY: 0, scale: 1 }} transition={{ delay: i*0.1, type: "spring" }} className={`w-56 h-80 rounded-2xl flex items-center justify-center text-9xl border-[6px] shadow-[0_0_40px_rgba(0,0,0,0.8)] ${c === 'JOLLY' ? 'bg-black border-red-600 text-red-600 shadow-[0_0_30px_red]' : 'bg-[#1a1a1a] text-white border-orange-500/30'}`}>
+                                {c === 'JOLLY' ? '🤡' : c}
                             </motion.div>
                         ))}
                     </div>
-                    <p className="mt-16 text-orange-200/60 uppercase tracking-[0.3em] text-2xl font-bold">Giocate da <span className="text-orange-400">{revealData.player}</span></p>
+                    
+                    <div className="mt-16 text-2xl font-bold uppercase tracking-[0.2em] text-orange-200/60">
+                        <p>Giocate da <span className="text-orange-400">{revealData.liarName}</span></p>
+                        <p className="mt-2 text-sm text-red-500">Dubitate da {revealData.doubterName}</p>
+                    </div>
                 </motion.div>
             )}
         </AnimatePresence>

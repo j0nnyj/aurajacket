@@ -13,8 +13,10 @@ export class LiarsBarGame {
     this.finishedRank = 0; 
     this.nextRoundStarterId = null; 
     
-    // --- NUOVA VARIABILE ANTI-SPAM ---
+    // VARIABILE ANTI-SPAM
     this.isProcessingShot = false; 
+    // DATI PER LA FASE DI RIVELAZIONE (TV)
+    this.revealData = null;
   }
 
   initGame(currentPlayers) {
@@ -31,7 +33,8 @@ export class LiarsBarGame {
     this.bulletChamber = {};
     this.hands = {};
     this.finishedRank = 0;
-    this.isProcessingShot = false; // Reset bandierina
+    this.isProcessingShot = false; 
+    this.revealData = null;
     
     this.players.forEach(p => {
         this.bulletChamber[p.sessionId] = { current: 0, bullet: Math.floor(Math.random() * 6) };
@@ -93,6 +96,12 @@ export class LiarsBarGame {
       }
       if (!player.isAlive) { socket.emit('set_view', 'LIARS_DEAD'); return; }
       if (player.isFinished) { socket.emit('set_view', 'LIARS_WON'); socket.emit('liars_rank', player.rank); return; }
+
+      // Se siamo in fase REVEAL, il telefono aspetta o vede la schermata di rivelazione
+      if (this.gameState === 'REVEAL') {
+          socket.emit('set_view', 'LIARS_REVEAL'); 
+          return;
+      }
 
       if (this.gameState === 'ROULETTE') {
           if (player.id === this.victimId) {
@@ -156,6 +165,7 @@ export class LiarsBarGame {
     this.requiredValue = this.pickRandomValue(); 
     this.finishedRank = 0;
     this.isProcessingShot = false;
+    this.revealData = null;
 
     this.players.forEach(player => {
       if (!player.isAlive) return;
@@ -220,7 +230,8 @@ export class LiarsBarGame {
 
       let loserId = isTruth ? doubterId : lastPlay.playerId;
       let winnerId = isTruth ? lastPlay.playerId : doubterId; 
-
+      
+      // Controllo se il giocatore onesto ha finito le carte
       if (isTruth) {
           const honestPlayer = this.players.find(p => p.id === lastPlay.playerId);
           if (honestPlayer && honestPlayer.hand.length === 0 && !honestPlayer.isFinished) {
@@ -233,23 +244,36 @@ export class LiarsBarGame {
       }
 
       this.nextRoundStarterId = winnerId;
-
-      this.io.emit('liars_reveal', {
-          cards: lastPlay.cards,
-          player: lastPlay.player,
-          result: isTruth ? "TRUTH" : "LIE",
+      
+      // --- FIX: FASE RIVELAZIONE ---
+      // Imposta stato REVEAL invece di passare subito alla roulette
+      this.gameState = 'REVEAL';
+      
+      const doubter = this.players.find(p => p.id === doubterId);
+      
+      this.revealData = {
+          doubterName: doubter ? doubter.name : 'Qualcuno',
+          liarName: lastPlay.player,
+          cards: lastPlay.cards.map(c => c.type), // Solo i tipi per la visualizzazione
+          tableValue: this.requiredValue,
+          isLie: !isTruth,
+          message: !isTruth ? "BECCATO! Era una bugia." : "DUBITATO MALE! Era la verità.",
           loserId: loserId
-      });
+      };
 
+      this.emitGameState(); // Manda alla TV i dati per mostrare "BECCATO"
+
+      // Aspetta 5 secondi prima di dare la pistola
       setTimeout(() => {
           this.startRoulette(loserId);
-      }, 1000); 
+      }, 5000); 
   }
 
   startRoulette(victimId) {
       this.gameState = 'ROULETTE';
+      this.revealData = null; // Pulisci fase rivelazione
       this.victimId = victimId;
-      this.isProcessingShot = false; // RESET BANDIERINA QUANDO INIZIA ROULETTE
+      this.isProcessingShot = false; // RESET BANDIERINA
       
       const victimPlayer = this.players.find(p => p.id === victimId);
       if(!victimPlayer) return;
@@ -270,23 +294,14 @@ export class LiarsBarGame {
   }
 
   handleTrigger(playerId) {
-      // --- 1. CONTROLLO ANTI-SPAM ---
-      // Se stiamo già processando uno sparo, IGNORA qualsiasi altro click
-      if (this.isProcessingShot) {
-          console.log("⚠️ Click ignorato: sparo già in corso.");
-          return; 
-      }
+      if (this.isProcessingShot) return; // Anti-spam
 
       if (this.gameState !== 'ROULETTE' || playerId !== this.victimId) return;
       
-      // ALZA LA BANDIERINA: Da ora in poi ignora altri click
       this.isProcessingShot = true; 
 
       const player = this.players.find(p => p.id === playerId);
-      if(!player) {
-          this.isProcessingShot = false; // Sicurezza
-          return;
-      }
+      if(!player) { this.isProcessingShot = false; return; }
 
       const chamber = this.bulletChamber[player.sessionId];
       const isDead = chamber.current === chamber.bullet;
@@ -307,7 +322,7 @@ export class LiarsBarGame {
   }
 
   resetRoundAfterShot(victimDied) {
-      this.isProcessingShot = false; // --- SBLOCCA: ORA SI PUÒ GIOCARE DI NUOVO ---
+      this.isProcessingShot = false; 
       
       this.gameState = 'PLAYING';
       this.tableStack = [];
@@ -332,7 +347,6 @@ export class LiarsBarGame {
       }
   }
   
-  // ... (resto delle funzioni checkWinCondition e nextTurn identiche a prima) ...
   nextTurn() {
       let attempts = 0;
       do {
@@ -373,6 +387,7 @@ export class LiarsBarGame {
           tableCount: realCardCount,
           lastActorId: this.lastPlayerId,
           victimId: this.victimId,
+          revealData: this.revealData, // Dati per la TV
           players: this.players.map(p => ({ 
               id: p.id, name: p.name, cardCount: p.hand.length, avatar: p.avatar, 
               isAlive: p.isAlive, isFinished: p.isFinished, rank: p.rank,
@@ -380,5 +395,14 @@ export class LiarsBarGame {
           })) 
       };
       this.io.emit('liars_update_table', gameState);
+
+      // FORZA LA VISTA SU MOBILE DURANTE REVEAL
+      if (this.gameState === 'REVEAL') {
+          this.players.forEach(p => {
+              if (p.isAlive) {
+                  this.io.to(p.id).emit('set_view', 'LIARS_REVEAL');
+              }
+          });
+      }
   }
 }

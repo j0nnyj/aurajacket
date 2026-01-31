@@ -8,8 +8,9 @@ export default function LiarsBarMobile({ socket, view, setView }) {
   const [isMyTurn, setIsMyTurn] = useState(false);
   const [gunStats, setGunStats] = useState({ probability: '???' });
   const [myRank, setMyRank] = useState(null);
-  const [revealInfo, setRevealInfo] = useState(null); 
-  // FIX: Stato per bloccare il doppio click
+  const [gameState, setGameState] = useState(null);
+  
+  // Stato per bloccare il doppio click sullo sparo
   const [hasShot, setHasShot] = useState(false);
 
   useEffect(() => {
@@ -23,21 +24,19 @@ export default function LiarsBarMobile({ socket, view, setView }) {
     
     socket.on('liars_update_table', (data) => {
         setGameInfo(data);
+        setGameState(data);
         setIsMyTurn(socket.id === data.activePlayerId);
-        if(data.phase !== 'PLAYING') setRevealInfo(null);
     });
 
     socket.on('liars_gun_stats', (stats) => setGunStats(stats));
     
-    // --- FIX SINCRONIZZAZIONE MORTE ---
+    // --- SINCRONIZZAZIONE MORTE ---
     socket.on('liars_shot_result', (res) => {
         if(res.playerId === socket.id && res.status === 'DEAD') {
-            // Vibrazione tattile per suspense (se supportata dal browser mobile)
             if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
-            
-            // ASPETTA 3 SECONDI (Tempo Spin TV) PRIMA DI MOSTRARE LA SCHERMATA MORTA
+            // Aspetta che finisca l'animazione sulla TV
             setTimeout(() => {
-                if (navigator.vibrate) navigator.vibrate(500); // Vibrazione lunga alla morte
+                if (navigator.vibrate) navigator.vibrate(500);
                 setView('LIARS_DEAD');
             }, 3000); 
         }
@@ -45,25 +44,13 @@ export default function LiarsBarMobile({ socket, view, setView }) {
     
     socket.on('liars_rank', (rank) => setMyRank(rank));
 
-    socket.on('liars_reveal', (data) => {
-        if (data.loserId === socket.id) {
-            // Anche qui, aspettiamo 1.5s per sincronizzarci con la TV
-            setTimeout(() => {
-                setRevealInfo({ 
-                    type: 'LOSE', 
-                    msg: data.result === 'LIE' ? 'TI HANNO SCOPERTO!' : 'HAI DUBITATO MALE!' 
-                });
-            }, 1500);
-        }
-    });
-
     return () => { 
         socket.off('liars_hand'); socket.off('liars_update_table'); socket.off('liars_gun_stats'); 
-        socket.off('liars_shot_result'); socket.off('liars_rank'); socket.off('liars_reveal');
+        socket.off('liars_shot_result'); socket.off('liars_rank');
     };
   }, [socket, setView]);
 
-  // RESET DEL BLOCCO QUANDO CAMBIA LA VISTA
+  // Reset del blocco sparo quando cambia la vista
   useEffect(() => {
       setHasShot(false);
   }, [view]);
@@ -76,43 +63,91 @@ export default function LiarsBarMobile({ socket, view, setView }) {
   const playCards = () => { if (isMyTurn) socket.emit('liars_play_cards', selectedIndices); };
   const callDoubt = () => { if (isMyTurn) socket.emit('liars_doubt'); };
   
-  // FIX: Funzione di sparo protetta
   const pullTrigger = () => { 
-      if (hasShot) return; // BLOCCO DOPPIO CLICK
-      setHasShot(true);    // Disabilita UI
+      if (hasShot) return; 
+      setHasShot(true);    
       socket.emit('liars_trigger'); 
   };
   
-  // Rotazione carte a ventaglio
   const getFanRotation = (index, total) => { const angle = 40; const start = -angle / 2; const step = total > 1 ? angle / (total - 1) : 0; return start + (step * index); };
 
-  // GESTIONE VISTE
+  // --- GESTIONE VISTE ---
+
   if (view === 'LIARS_LOBBY') return <LobbyView />;
   if (view === 'LIARS_DEAD') return <DeadView />;
   if (view === 'LIARS_WON' || view === 'LIARS_GAME_OVER') return <LiarsBarWonView rank={myRank} />;
-
-  // FIX: Passo lo stato hasShot alla vista Roulette
   if (view === 'LIARS_ROULETTE') return <RouletteView probability={gunStats.probability} onTrigger={pullTrigger} hasShot={hasShot} />;
   if (view === 'LIARS_WAITING_SHOT') return <WaitingShotView />;
 
-  // SCHERMATA ROSSA DI ERRORE (DUBBIO FALLITO)
-  if (revealInfo) {
-      return (
-          <div className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center overflow-hidden">
-              <div className="absolute inset-0 bg-red-900/40 animate-pulse"></div>
-              <div className="absolute inset-0 opacity-10 bg-[repeating-linear-gradient(45deg,#000,#000_20px,#ff0000_20px,#ff0000_40px)]"></div>
-              <motion.div initial={{ scale: 2, opacity: 0, rotate: -15 }} animate={{ scale: 1, opacity: 1, rotate: -5 }} transition={{ type: "spring", stiffness: 300, damping: 15 }} className="relative z-10 border-8 border-red-600 p-8 rounded-xl bg-black/80 backdrop-blur-md shadow-[0_0_100px_red]">
-                  <div className="text-8xl mb-4 text-center animate-bounce">🚨</div>
-                  <h1 className="text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-red-500 to-red-800 uppercase tracking-tighter drop-shadow-[0_0_10px_rgba(255,0,0,0.8)] text-center leading-none">{revealInfo.msg === 'TI HANNO SCOPERTO!' ? 'BECCATO!' : 'ERRORE!'}</h1>
-                  <div className="w-full h-1 bg-red-600 my-4"></div>
-                  <p className="text-white font-bold text-xl uppercase tracking-[0.3em] text-center">{revealInfo.msg}</p>
-              </motion.div>
-              <p className="absolute bottom-10 text-red-500/70 font-mono text-sm uppercase tracking-widest animate-pulse">Preparati alla Roulette...</p>
-          </div>
-      );
+  // --- NUOVA VISTA: RIVELAZIONE (STILE DRAMMATICO) ---
+  if (view === 'LIARS_REVEAL' && gameState?.revealData) {
+      const myId = socket.id;
+      const reveal = gameState.revealData;
+      
+      const isLoser = reveal.loserId === myId;
+      const isLie = reveal.isLie;
+
+      // STILI DIVERSI IN BASE AL RISULTATO
+      if (isLoser) {
+          // --- SEI TU IL PERDENTE ---
+          return (
+              <div className="h-screen flex flex-col items-center justify-center p-6 text-center bg-gradient-to-b from-red-900 via-red-950 to-black relative overflow-hidden">
+                  <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-20"></div>
+                  <div className="absolute inset-0 bg-red-600/10 animate-pulse pointer-events-none"></div>
+                  
+                  <motion.div 
+                      initial={{ scale: 0 }} animate={{ scale: 1 }} 
+                      className="w-48 h-48 bg-black rounded-full border-8 border-red-600 flex items-center justify-center text-8xl mb-8 shadow-[0_0_50px_rgba(220,38,38,0.6)] z-10"
+                  >
+                      {isLie ? '🤥' : '🤡'}
+                  </motion.div>
+                  
+                  <h1 className="text-5xl font-black text-white uppercase leading-none drop-shadow-xl mb-4 z-10">
+                      {isLie ? "TI HANNO" : "HAI DUBITATO"}
+                      <br />
+                      <span className="text-red-500 text-6xl">{isLie ? "BECCATO!" : "MALE!"}</span>
+                  </h1>
+                  
+                  <div className="bg-red-900/50 border border-red-500/50 px-6 py-3 rounded-xl backdrop-blur-md mt-6 z-10">
+                      <p className="text-red-200 font-bold uppercase tracking-widest text-sm mb-1">Conseguenza</p>
+                      <p className="text-white font-black text-xl uppercase tracking-wider">ROULETTE RUSSA</p>
+                  </div>
+              </div>
+          );
+      } else {
+          // --- SEI UN OSSERVATORE (SALVO) ---
+          return (
+              <div className="h-screen flex flex-col items-center justify-center p-6 text-center bg-gradient-to-b from-gray-900 via-gray-950 to-black relative overflow-hidden">
+                  <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10"></div>
+                  
+                  <motion.div 
+                      initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
+                      className={`w-40 h-40 rounded-full border-8 flex items-center justify-center text-7xl mb-8 shadow-2xl z-10 ${isLie ? 'bg-green-900 border-green-500 text-white' : 'bg-orange-900 border-orange-500 text-white'}`}
+                  >
+                      {isLie ? '🕵️‍♂️' : '🛡️'}
+                  </motion.div>
+                  
+                  <h1 className="text-4xl font-black text-white uppercase leading-tight drop-shadow-xl mb-2 z-10">
+                      {isLie ? "BUGIA" : "VERITÀ"}
+                      <br />
+                      <span className={isLie ? "text-green-500" : "text-orange-500"}>
+                          {isLie ? "SVELATA!" : "CONFERMATA!"}
+                      </span>
+                  </h1>
+                  
+                  <p className="text-white/50 font-bold uppercase tracking-widest text-xs mt-4 z-10">
+                      {isLie ? `${reveal.liarName} ha mentito!` : `${reveal.liarName} era onesto!`}
+                  </p>
+
+                  <div className="mt-8 bg-white/5 px-6 py-3 rounded-full border border-white/10 z-10">
+                      <p className="text-white font-bold text-sm">Tu sei salvo... per ora.</p>
+                  </div>
+              </div>
+          );
+      }
   }
 
-  // VISTA MANO CARTE
+  // --- VISTA MANO DI GIOCO ---
   if (view === 'LIARS_HAND') {
       const canDoubt = isMyTurn && gameInfo?.tableCount > 0;
       return (
@@ -168,7 +203,6 @@ const LiarsBarWonView = ({rank}) => {
 
 const WaitingShotView = () => (<div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-6 text-center relative overflow-hidden"><div className="absolute inset-0 bg-red-900/10 blur-[80px] animate-pulse pointer-events-none"></div><div className="text-7xl mb-6 animate-spin-slow text-red-500 drop-shadow-[0_0_25px_red] relative z-10">🎲</div><h2 className="text-3xl font-black text-white mb-3 uppercase tracking-wider relative z-10">Roulette Russa</h2><p className="text-red-300/70 font-medium tracking-widest relative z-10 bg-black/40 px-5 py-2 rounded-full text-sm">Qualcuno sta premendo il grilletto...</p></div>);
 
-// FIX: RouletteView aggiornata con il blocco visivo (disabilita bottone se hasShot è true)
 const RouletteView = ({ probability, onTrigger, hasShot }) => (
     <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-between p-6 text-center relative overflow-hidden">
         <div className="absolute inset-0 bg-red-900/20 animate-pulse pointer-events-none"></div>
@@ -183,12 +217,12 @@ const RouletteView = ({ probability, onTrigger, hasShot }) => (
         
         <button 
             onClick={onTrigger} 
-            disabled={hasShot} // FIX: Disabilita il click
+            disabled={hasShot}
             className={`
                 w-64 h-64 rounded-full border-[6px] flex flex-col items-center justify-center shadow-[0_0_60px_rgba(220,38,38,0.6)] 
                 transition-all duration-200 z-10 group
                 ${hasShot 
-                    ? 'bg-gray-900 border-gray-700 opacity-50 cursor-not-allowed scale-95' // Stile disabilitato
+                    ? 'bg-gray-900 border-gray-700 opacity-50 cursor-not-allowed scale-95' 
                     : 'bg-gradient-to-br from-black to-red-950 border-red-600 hover:shadow-[0_0_100px_rgba(220,38,38,0.9)] hover:border-red-500 active:scale-90'
                 }
             `}

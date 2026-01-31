@@ -4,12 +4,13 @@ import { Server } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import ip from 'ip';
-import { v4 as uuidv4 } from 'uuid'; // Assicurati di aver fatto: npm install uuid
+import { v4 as uuidv4 } from 'uuid'; 
 
 // Importa i giochi
 import { ImposterGame } from './backend/games/Imposter.js';
 import { LiarsBarGame } from './backend/games/LiarsBar.js';
 import { TrashTalkGame } from './backend/games/TrashTalk.js';
+import { IsItYouGame } from './backend/games/IsItYou.js'; // <--- IMPORTATO
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -31,6 +32,7 @@ let activeGame = 'LOBBY';
 const imposterGame = new ImposterGame(io);
 const liarsBarGame = new LiarsBarGame(io);
 const trashTalkGame = new TrashTalkGame(io);
+const isItYouGame = new IsItYouGame(io); // <--- ISTANZA CREATA
 
 io.on('connection', (socket) => {
   console.log(`⚡ Nuova connessione: ${socket.id}`);
@@ -49,9 +51,19 @@ io.on('connection', (socket) => {
   socket.on('host_change_game', (gameName) => {
     activeGame = gameName;
     
-    if (gameName === 'IMPOSTER') { imposterGame.initGame(players); } 
-    else if (gameName === 'LIARS_BAR') { liarsBarGame.initGame(players); io.emit('set_view', 'LIARS_LOBBY'); }
-    else if (gameName === 'TRASHTALK') { trashTalkGame.initGame(players); }
+    if (gameName === 'IMPOSTER') { 
+        imposterGame.initGame(players); 
+    } 
+    else if (gameName === 'LIARS_BAR') { 
+        liarsBarGame.initGame(players); 
+        io.emit('set_view', 'LIARS_LOBBY'); 
+    }
+    else if (gameName === 'TRASHTALK') { 
+        trashTalkGame.initGame(players); 
+    }
+    else if (gameName === 'IS_IT_YOU') { // <--- NUOVO GIOCO
+        isItYouGame.initGame(players); 
+    }
   });
 
   socket.on('host_new_session', () => {
@@ -63,14 +75,8 @@ io.on('connection', (socket) => {
 
   socket.on('host_back_to_menu', () => {
       console.log("🔙 Ritorno al Menu Principale");
-      
       activeGame = 'LOBBY';
-      
-      // 1. Diciamo a tutti di tornare alla vista Lobby Globale
       io.emit('set_view', 'GLOBAL_LOBBY');
-      
-      // 2. IMPORTANTE: Forziamo l'invio della lista aggiornata
-      // Così l'Host Menu la riceve appena viene caricato
       io.emit('update_player_list', players); 
   });
 
@@ -87,31 +93,31 @@ io.on('connection', (socket) => {
   // 2. GESTIONE GIOCATORI (LOGIN, SESSIONI, USCITA)
   // ==========================================================
   
-  // LOGIN / RICONNESSIONE
   socket.on('join_game', ({ name, avatar, sessionId }) => {
       
       // A. TENTATIVO DI RECUPERO SESSIONE
       let existingPlayer = null;
-      
       if (sessionId) {
           existingPlayer = players.find(p => p.sessionId === sessionId);
       }
-
-      // Fallback: cerca per nome (utile se il browser pulisce la cache ma il server no)
       if (!existingPlayer) {
           existingPlayer = players.find(p => p.name.toLowerCase() === name.toLowerCase());
       }
 
       if (existingPlayer) {
-          // --- BENTORNATO! (RICONNESSIONE) ---
-          console.log(`🔄 Riconnessione rilevata: ${existingPlayer.name} (UUID: ${existingPlayer.sessionId})`);
+          // --- RICONNESSIONE ---
+          console.log(`🔄 Riconnessione rilevata: ${existingPlayer.name}`);
           
-          existingPlayer.id = socket.id; // Aggiorna il socket ID attuale
+          existingPlayer.id = socket.id; 
           existingPlayer.isConnected = true;
           
-          // Aggiorna ID anche dentro la lista specifica di TrashTalk se serve
+          // Aggiorna ID nei giochi specifici
           if (activeGame === 'TRASHTALK') {
              const p = trashTalkGame.players.find(x => x.sessionId === existingPlayer.sessionId);
+             if (p) p.id = socket.id;
+          }
+          else if (activeGame === 'IS_IT_YOU') { // <--- AGGIORNAMENTO ID IS_IT_YOU
+             const p = isItYouGame.players.find(x => x.sessionId === existingPlayer.sessionId);
              if (p) p.id = socket.id;
           }
 
@@ -125,19 +131,13 @@ io.on('connection', (socket) => {
               return;
           }
 
-          const newSessionId = uuidv4(); // Genera braccialetto univoco
-          
+          const newSessionId = uuidv4(); 
           const newPlayer = { 
-              id: socket.id, 
-              sessionId: newSessionId, 
-              name, 
-              avatar, 
-              score: 0, 
-              isConnected: true 
+              id: socket.id, sessionId: newSessionId, name, avatar, score: 0, isConnected: true 
           };
           
           players.push(newPlayer);
-          console.log(`✨ Nuovo giocatore: ${name} (UUID: ${newSessionId})`);
+          console.log(`✨ Nuovo giocatore: ${name}`);
           socket.emit('login_success', newPlayer);
           restorePlayerView(socket, newPlayer);
       }
@@ -145,34 +145,30 @@ io.on('connection', (socket) => {
       io.emit('update_player_list', players);
   });
 
-  // LOGOUT (CAMBIA PROFILO)
   socket.on('leave_game', () => {
       const playerToRemove = players.find(p => p.id === socket.id);
       if (playerToRemove) {
           console.log(`👋 Giocatore uscito volontariamente: ${playerToRemove.name}`);
-          
-          // Rimuovi dalla lista globale
           players = players.filter(p => p.id !== socket.id);
           
-          // Gestione specifica per rimuovere dai giochi attivi
+          // Rimuovi dai giochi attivi
           if (activeGame === 'TRASHTALK') {
              trashTalkGame.removePlayer(playerToRemove.sessionId);
           } else if (activeGame === 'LIARS_BAR') {
              liarsBarGame.removePlayer(playerToRemove.sessionId);
+          } else if (activeGame === 'IS_IT_YOU') { // <--- RIMOZIONE IS_IT_YOU
+             isItYouGame.removePlayer(playerToRemove.sessionId); // (Nota: dovrai aggiungere questo metodo nella classe se vuoi pulire memoria, ma per ora è opzionale)
           }
-          // (Imposter non ha bisogno di rimozione critica perché ricalcola i vivi al volo)
 
           io.emit('update_player_list', players);
       }
   });
 
-  // DISCONNESSIONE INVOLONTARIA (CHIUSURA BROWSER/REFRESH)
   socket.on('disconnect', () => {
     const p = players.find(p => p.id === socket.id);
     if (p) {
         p.isConnected = false;
         console.log(`❌ Disconnesso (in attesa): ${p.name}`);
-        // NON LO RIMUOVIAMO -> Session Recovery attiva
     }
     io.emit('update_player_list', players);
   });
@@ -180,7 +176,6 @@ io.on('connection', (socket) => {
   // HELPER PER RIPRISTINARE LA VISTA CORRETTA
   const restorePlayerView = (socket, player) => {
       if (activeGame === 'LIARS_BAR') {
-          // Passiamo null come oldId perché reconnectPlayer se lo cerca da solo tramite sessionId
           liarsBarGame.reconnectPlayer(socket, player, null); 
       } 
       else if (activeGame === 'IMPOSTER') {
@@ -188,6 +183,9 @@ io.on('connection', (socket) => {
       } 
       else if (activeGame === 'TRASHTALK') {
           trashTalkGame.syncSinglePlayer(socket, player);
+      }
+      else if (activeGame === 'IS_IT_YOU') { // <--- SYNC IS_IT_YOU
+          isItYouGame.syncSinglePlayer(socket, player);
       } 
       else {
           socket.emit('set_view', 'GLOBAL_LOBBY');
@@ -215,21 +213,20 @@ io.on('connection', (socket) => {
   socket.on('trashtalk_start', () => trashTalkGame.startGame());
   socket.on('trashtalk_vote', (targetId) => trashTalkGame.handleVote(socket.id, targetId));
   socket.on('trashtalk_answer', (text) => trashTalkGame.handleAnswer(socket.id, text));
-  
-  // FIX IMPORTANTE: Sync manuale per quando il telefono carica la pagina
   socket.on('trashtalk_sync', () => {
       const p = players.find(x => x.id === socket.id);
       if(p) trashTalkGame.syncSinglePlayer(socket, p);
   });
 
+  // --- IS IT YOU? ---
+  isItYouGame.setupListeners(socket); // <--- ATTIVAZIONE LISTENER
+
 });
 
-// SERVE IL FRONTEND REACT
 app.get(/^(?!\/socket.io).*/, (req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
-// AVVIO SERVER
 httpServer.listen(3000, '0.0.0.0', () => {
   console.log(`🚀 SERVER AVVIATO SU: http://${ip.address()}:3000`);
 });
