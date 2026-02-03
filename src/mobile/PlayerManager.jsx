@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import ImposterMobile from './ImposterMobile';
 import LiarsBarMobile from './LiarsBarMobile';
 import TrashTalkMobile from './TrashTalkMobile';
-import IsItYouMobile from './IsItYouMobile'; // <--- 1. IMPORT NUOVO GIOCO
+
 
 const AVATARS = ['😎', '👻', '🤖', '💩', '👽', '🐶', '🐱', '🦄', '🐯', '🐼', '🦊', '🦁', '💀', '🤡', '🤠', '🎃'];
 const NEON_COLORS = ['#ff0055', '#00ff99', '#00ccff', '#cc00ff', '#ffaa00', '#ffff00', '#ffffff'];
@@ -21,8 +21,7 @@ function MobileGameRouter({ socket, view, setView, playerName }) {
     if (view.startsWith('LIARS_')) return <LiarsBarMobile socket={socket} view={view} setView={setView} />;
     if (view.startsWith('TRASHTALK_')) return <TrashTalkMobile socket={socket} view={view} setView={setView} />;
     
-    // 2. AGGIUNTO IL ROUTING PER IS IT YOU
-    if (view.startsWith('ISITYOU_')) return <IsItYouMobile socket={socket} view={view} setView={setView} />;
+   
     
     // Default fallback (Imposter)
     return <ImposterMobile socket={socket} view={view} setView={setView} playerName={playerName} />;

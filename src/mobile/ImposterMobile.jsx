@@ -1,28 +1,26 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 
 export default function ImposterMobile({ socket, view, setView, playerName }) {
   const [roleData, setRoleData] = useState({ role: null, info: '' });
-  const [players, setPlayers] = useState([]); // Lista fondamentale per il voto
+  const [players, setPlayers] = useState([]); 
   const [voted, setVoted] = useState(false);
   const [resultData, setResultData] = useState(null);
 
   useEffect(() => {
-    // 1. Chiedi lo stato del gioco
     socket.emit('imposter_sync');
-    
-    // 2. CRUCIALE: Chiedi la lista dei giocatori appena carichi il componente
-    // Senza questo, la schermata di voto rimane vuota!
     socket.emit('host_request_update'); 
 
-    // ASCOLTATORI
-    socket.on('imposter_role_data', (data) => setRoleData(data));
-    
-    // Aggiorna la lista per i bottoni di voto
-    socket.on('update_player_list', (list) => {
-        console.log("Lista giocatori ricevuta su mobile:", list);
-        setPlayers(list);
+    socket.on('imposter_role_data', (data) => {
+        setRoleData(data);
+        setVoted(false);
     });
-
+    
+    socket.on('update_player_list', (list) => {
+        const safeList = list.map(p => ({...p, isAlive: p.isAlive !== undefined ? p.isAlive : true}));
+        setPlayers(safeList);
+    });
+    
     socket.on('imposter_game_over', (data) => setResultData(data));
 
     return () => {
@@ -37,114 +35,87 @@ export default function ImposterMobile({ socket, view, setView, playerName }) {
       socket.emit('imposter_vote', targetId);
   };
 
-  // ==========================================
-  // VISTE
-  // ==========================================
-
-  // 1. LOBBY (DESIGN ALLINEATO A LIAR'S BAR)
+  // --- 1. LOBBY ---
   if (view === 'IMPOSTER_LOBBY') {
       return (
-          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
-              {/* ICONA CERCHIO PULSANTE */}
-              <div className="text-8xl mb-6 bg-slate-800 rounded-full w-40 h-40 flex items-center justify-center border-4 border-purple-600 shadow-[0_0_30px_rgba(147,51,234,0.5)]">
-                  🕵️‍♂️
+          <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6 text-center font-mono">
+              <div className="w-24 h-24 border-2 border-gray-800 rounded-full flex items-center justify-center mb-6 animate-pulse">
+                  <span className="text-4xl grayscale opacity-50">🔒</span>
               </div>
-              
-              {/* TITOLO GRADIENTE */}
-              <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-pink-600 mb-2 uppercase tracking-tighter">
-                  IMPOSTORE
-              </h1>
-              
-              {/* SOTTOTITOLO */}
-              <p className="text-slate-400 text-lg mb-12 font-medium">
-                  C'è una spia tra noi.<br/>Fidarsi è bene, non fidarsi è meglio.
-              </p>
-              
-              {/* BADGE STATO */}
-              <div className="bg-slate-800 px-8 py-4 rounded-full border border-slate-700 flex items-center gap-4 animate-pulse shadow-xl">
-                  <div className="w-4 h-4 bg-purple-500 rounded-full shadow-[0_0_10px_#a855f7]"></div>
-                  <span className="text-slate-200 font-bold uppercase text-sm tracking-widest">In attesa dell'Host</span>
-              </div>
+              <h1 className="text-xl font-bold text-gray-300 uppercase tracking-[0.2em] mb-2">Connessione Sicura</h1>
+              <p className="text-green-600 text-xs uppercase tracking-widest">In attesa dell'Host...</p>
           </div>
       );
   }
 
-  // 2. RUOLO (Restyling)
+  // --- 2. RUOLO ---
   if (view === 'IMPOSTER_ROLE') {
       const isImposter = roleData.role === 'IMPOSTER';
-      // Colori di sfondo drastici per far capire subito il ruolo
-      const bgColor = isImposter ? 'bg-red-950' : 'bg-emerald-950';
-      const accentColor = isImposter ? 'text-red-500' : 'text-emerald-400';
-      const borderColor = isImposter ? 'border-red-600' : 'border-emerald-500';
+      const color = isImposter ? 'text-red-600' : 'text-cyan-500';
+      const border = isImposter ? 'border-red-900' : 'border-cyan-900';
 
       return (
-          <div className={`min-h-screen ${bgColor} flex flex-col items-center justify-center p-6 text-center transition-colors duration-500`}>
+          <div className="min-h-screen bg-black flex flex-col p-6 font-mono relative overflow-hidden">
+              {/* Scanlines */}
+              <div className="absolute inset-0 bg-[linear-gradient(transparent_50%,rgba(0,0,0,0.5)_50%)] bg-[size:100%_4px] pointer-events-none z-20 opacity-50"></div>
               
-              <div className="mb-4">
-                  <span className={`text-xs font-black uppercase tracking-[0.3em] bg-black/30 px-4 py-2 rounded-full ${accentColor}`}>
-                      IL TUO RUOLO
-                  </span>
-              </div>
-              
-              <h2 className={`text-4xl font-black text-white mb-8 uppercase tracking-tighter drop-shadow-lg`}>
-                  {isImposter ? "SEI L'IMPOSTORE" : "SEI UN CIVILE"}
-              </h2>
-              
-              {/* CARD RUOLO */}
-              <div className={`w-full py-12 rounded-3xl border-4 ${borderColor} bg-slate-900/50 shadow-2xl mb-8 relative overflow-hidden`}>
-                  {/* Etichetta in alto */}
-                  <div className={`absolute top-0 left-0 right-0 h-2 ${isImposter ? 'bg-red-600' : 'bg-emerald-500'}`}></div>
+              <div className="flex-1 flex flex-col justify-center items-center relative z-10">
+                  <p className="text-gray-500 text-[10px] uppercase tracking-[0.4em] mb-4">Classificazione Identità</p>
                   
-                  <p className="text-slate-400 text-xs uppercase font-bold mb-2">
-                      {isImposter ? "La Categoria è" : "La Parola Segreta è"}
-                  </p>
-                  <span className="text-4xl font-black text-white uppercase tracking-wider block px-2 break-words">
-                      {roleData.info}
-                  </span>
-              </div>
+                  <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className={`text-6xl mb-6 ${color}`}>
+                      {isImposter ? '☠️' : '🛡️'}
+                  </motion.div>
 
-              <div className="bg-black/20 p-6 rounded-2xl text-sm text-slate-300 leading-relaxed border border-white/5">
-                  {isImposter 
-                    ? <span>Devi <b>fingere</b> di conoscere la parola specifica. Ascolta gli altri e cerca di capire qual è!</span> 
-                    : <span>La tua parola appartiene a questa categoria. Trova chi sta mentendo!</span>}
+                  <h1 className={`text-5xl font-black uppercase mb-12 tracking-tighter ${color}`}>
+                      {isImposter ? 'IMPOSTORE' : 'AGENTE'}
+                  </h1>
+
+                  <div className={`w-full border-t-2 border-b-2 ${border} bg-gray-900/50 p-8 mb-8 backdrop-blur-sm`}>
+                      <p className="text-gray-400 text-xs uppercase font-bold tracking-widest mb-2 text-center">
+                          {isImposter ? "CATEGORIA BERSAGLIO" : "CODICE SEGRETO"}
+                      </p>
+                      <p className="text-3xl font-black text-white tracking-widest text-center break-words">
+                          {roleData.info}
+                      </p>
+                  </div>
+
+                  <p className="text-gray-600 text-xs uppercase tracking-widest max-w-xs text-center leading-relaxed">
+                      {isImposter ? 'Nessuno conosce la tua identità. Mentire è la tua unica opzione.' : 'Proteggi la parola. Individua il traditore tra di voi.'}
+                  </p>
               </div>
           </div>
       );
   }
 
-  // 3. VOTAZIONE (Fix Lista Vuota)
-  if (view === 'IMPOSTER_VOTE') {
+  // --- 3. VOTING ---
+  if (view === 'IMPOSTER_VOTE' || view === 'IMPOSTER_VOTING') {
       if (voted) {
           return (
-            <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center">
-                <div className="text-8xl mb-6 animate-bounce">🗳️</div>
-                <h2 className="text-3xl font-black text-white mb-2 uppercase">Voto Inviato</h2>
-                <p className="text-slate-400 font-bold">In attesa degli altri...</p>
-            </div>
+              <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white font-mono">
+                  <div className="text-6xl mb-6 animate-bounce">📨</div>
+                  <h2 className="text-xl font-bold uppercase tracking-widest mb-2">Voto Trasmesso</h2>
+                  <p className="text-gray-600 text-xs uppercase">Attendere il termine delle operazioni</p>
+              </div>
           );
       }
 
-      return (
-          <div className="min-h-screen bg-slate-900 flex flex-col p-6">
-              <h1 className="text-3xl font-black text-white mb-2 text-center uppercase tracking-tighter">Vota l'Impostore</h1>
-              <p className="text-center text-slate-400 text-sm mb-8 font-bold uppercase tracking-widest">Tocca per eliminare</p>
-              
-              {/* GRIGLIA VOTI */}
-              <div className="grid grid-cols-2 gap-4 pb-10">
-                  {players.length === 0 && (
-                      <div className="col-span-2 text-center text-red-500 font-bold animate-pulse">
-                          Caricamento lista giocatori...
-                      </div>
-                  )}
+      const targets = players.filter(p => p.name !== playerName && (p.isAlive !== false));
 
-                  {players.filter(p => p.name !== playerName).map((p, i) => (
+      return (
+          <div className="min-h-screen bg-[#080808] flex flex-col font-mono">
+              <div className="bg-red-900/20 border-b border-red-900 p-4 text-center shrink-0">
+                  <h2 className="text-red-500 font-bold uppercase tracking-widest text-sm animate-pulse">Eliminazione Richiesta</h2>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-3 content-start pb-10">
+                  {targets.map(p => (
                       <button 
-                        key={i}
-                        onClick={() => sendVote(p.id)}
-                        className="bg-slate-800 p-4 rounded-2xl border-2 border-slate-700 hover:border-red-500 hover:bg-red-900/20 active:scale-95 transition flex flex-col items-center shadow-lg relative group"
+                          key={p.id} 
+                          onClick={() => sendVote(p.id)}
+                          className="bg-[#111] border border-gray-800 p-4 flex flex-col items-center active:bg-red-900/50 active:border-red-600 transition-all h-32 justify-center rounded shadow-lg"
                       >
-                          <div className="text-4xl mb-3 group-hover:scale-110 transition">{p.avatar}</div>
-                          <div className="font-bold text-white truncate w-full text-center text-sm">{p.name}</div>
+                          <div className="text-4xl mb-2 grayscale contrast-125">{p.avatar}</div>
+                          <div className="text-gray-300 font-bold uppercase text-xs w-full truncate text-center tracking-wider">{p.name}</div>
                       </button>
                   ))}
               </div>
@@ -152,42 +123,40 @@ export default function ImposterMobile({ socket, view, setView, playerName }) {
       );
   }
 
-  // 4. GAME OVER
+  // --- 4. GAME OVER (NEW STYLE) ---
   if (view === 'GAME_OVER') {
       const isImposter = roleData.role === 'IMPOSTER';
       const imposterWon = resultData?.winner === 'IMPOSTER';
       const iWon = (isImposter && imposterWon) || (!isImposter && !imposterWon);
+      
+      const themeColor = iWon ? 'green' : 'red';
+      const bgColor = iWon ? 'bg-green-950' : 'bg-red-950';
 
       return (
-          <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center animate-fade-in">
-              <h1 className="text-4xl font-black text-white mb-8 uppercase tracking-tighter">PARTITA TERMINATA</h1>
+          <div className={`min-h-screen flex flex-col items-center justify-center p-6 text-center font-mono ${bgColor} relative overflow-hidden`}>
+              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30"></div>
               
-              <div className={`p-10 rounded-3xl border-4 mb-8 w-full shadow-2xl relative overflow-hidden ${iWon ? 'bg-green-900/40 border-green-500' : 'bg-red-900/40 border-red-500'}`}>
-                   {/* Background Glow */}
-                   <div className={`absolute inset-0 opacity-20 ${iWon ? 'bg-green-500' : 'bg-red-500'} blur-xl`}></div>
+              <div className="relative z-10 w-full max-w-sm border-t-4 border-b-4 border-white/20 py-10 bg-black/40 backdrop-blur-md">
+                   <h1 className="text-7xl mb-4 drop-shadow-lg">{iWon ? '🏆' : '💀'}</h1>
+                   <h2 className="text-4xl font-black text-white uppercase tracking-widest mb-2 drop-shadow-md">
+                       {iWon ? 'VITTORIA' : 'SCONFITTA'}
+                   </h2>
                    
-                   <div className="relative z-10">
-                       <div className="text-7xl mb-4">{iWon ? '🏆' : '💀'}</div>
-                       <p className="text-3xl font-black text-white uppercase tracking-widest">{iWon ? 'VITTORIA' : 'SCONFITTA'}</p>
-                   </div>
-              </div>
+                   <div className={`w-16 h-1 mx-auto my-6 bg-${themeColor}-500`}></div>
 
-              <div className="text-slate-400 font-medium">
-                  L'impostore era <br/>
-                  <span className="text-white font-black text-xl uppercase bg-slate-800 px-3 py-1 rounded mt-1 inline-block border border-slate-700">
-                      {resultData?.imposterName}
-                  </span>
+                   <p className="text-white/50 text-[10px] uppercase tracking-[0.3em] mb-2">Identità Nemico</p>
+                   <p className="text-2xl font-black text-white uppercase tracking-wider">{resultData?.imposterName}</p>
               </div>
               
               <button 
                 onClick={() => setView('IMPOSTER_LOBBY')}
-                className="mt-12 text-slate-500 text-xs font-bold uppercase tracking-widest hover:text-white transition"
+                className="mt-12 text-white/40 text-xs font-bold uppercase tracking-widest hover:text-white transition border-b border-transparent hover:border-white relative z-10"
               >
-                  Torna alla Lobby
+                  Torna allo Standby
               </button>
           </div>
       );
   }
 
-  return <div className="bg-slate-900 text-white h-screen flex items-center justify-center font-bold animate-pulse">Caricamento...</div>;
+  return <div className="bg-black text-white h-screen flex items-center justify-center font-bold animate-pulse tracking-widest text-xs">ESTABLISHING LINK...</div>;
 }

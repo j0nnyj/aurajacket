@@ -7,7 +7,7 @@ import HostMenu from './pages/HostMenu';
 import ImposterGame from './games/ImposterGame';
 import LiarsBarGame from './games/LiarsBarGame';
 import TrashTalkGame from './games/TrashTalkGame';
-import IsItYouGame from './games/IsItYouGame'; // <--- 1. NUOVO IMPORT
+
 
 // COMPONENTE PLAYER MOBILE
 import PlayerManager from './mobile/PlayerManager';
@@ -80,8 +80,7 @@ export default function App() {
         <Route path="/host/liarsbar" element={<HostLayout><LiarsBarGame socket={socket} /></HostLayout>} />
         <Route path="/host/trashtalk" element={<HostLayout><TrashTalkGame socket={socket} /></HostLayout>} />
         
-        {/* 2. NUOVA ROTTA IS IT YOU */}
-        <Route path="/host/isityou" element={<HostLayout><IsItYouGame socket={socket} /></HostLayout>} />
+        
         
         {/* ROTTA MOBILE */}
         <Route path="*" element={<PlayerManager socket={socket} />} />

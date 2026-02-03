@@ -4,75 +4,266 @@ export class ImposterGame {
     this.players = [];
     this.gameState = 'LOBBY'; 
     this.currentData = null; 
-    this.imposterSessionId = null; // <--- MODIFICA: Usiamo sessionId per ricordare chi è l'impostore
+    this.imposterSessionId = null; 
     this.votes = {};
     
     this.database = [
-     // === LIVELLO DIFFICILE (Nuovi) ===
-        { category: "Fobie", word: "Claustrofobia", hint: "Paura di non poter uscire." },
-        { category: "Crimini Digitali", word: "Hackeraggio", hint: "Serve un computer e non ti vedono." },
-        { category: "Disastri Naturali", word: "Valanga", hint: "Bianco, freddo e pericoloso." },
-        { category: "Periodi Storici", word: "Rinascimento", hint: "Arte, Italia, passato glorioso." },
-        { category: "Fenomeni Ottici", word: "Miraggio", hint: "Sembra vero ma non lo è." },
-        { category: "Concetti Giuridici", word: "Alibi", hint: "Serve per dimostrare che non c'eri." },
-        { category: "Elementi dell'Universo", word: "Supernova", hint: "Esplosione molto luminosa e lontana." },
-        { category: "Mitologia", word: "Fenice", hint: "Rinasce sempre, ha a che fare col fuoco." },
-        { category: "Stati d'Animo", word: "Imbarazzo", hint: "Ti fa diventare rosso o vuoi sparire." },
-        { category: "Teorie del Complotto", word: "Terrapiattismo", hint: "Contrario a ciò che dice la scienza." },
-        { category: "Arte", word: "Mosaico", hint: "Tanti piccoli pezzi fanno un'immagine." },
-        { category: "Letteratura", word: "Divina Commedia", hint: "Libro antico, inferno e paradiso." },
-        { category: "Economia", word: "Bancarotta", hint: "Quando finiscono i soldi." },
-        { category: "Filosofia", word: "Nichilismo", hint: "Nulla ha senso o importanza." },
-        { category: "Simboli", word: "Yin e Yang", hint: "Bianco e nero, equilibrio." },
-        // === LIVELLO CAOS (Specifici e Divertenti) ===
-        { category: "Cose che si perdono", word: "Calzino spaiato", hint: "Ne trovi sempre solo uno." },
-        { category: "Stereotipi Italiani", word: "Gesticolare", hint: "Si fa con le mani mentre si parla." },
-        { category: "Personaggi Horror", word: "Zombie", hint: "Cammina lento e vuole mangiare." },
-        { category: "Oggetti Inutili", word: "Souvenir", hint: "Lo compri in vacanza e prende polvere." },
-        { category: "Internet Culture", word: "Meme", hint: "Immagine divertente che gira online." },
-        { category: "Fastidi Quotidiani", word: "Zanzara", hint: "Piccolo, vola e non ti fa dormire." },
-        { category: "Cibi Controversi", word: "Pizza con Ananas", hint: "A molti piace, agli italiani no." },
-        { category: "Superpoteri", word: "Invisibilità", hint: "Nessuno ti può vedere." },
-        { category: "Videogiochi", word: "Battle Royale", hint: "Ne rimane solo uno alla fine." },
-        { category: "Feste", word: "Addio al Celibato", hint: "Ultima festa prima di cambiare vita." },
-        // === NUOVI: VITA QUOTIDIANA ===
-        { category: "Igiene Personale", word: "Spazzolino", hint: "Si usa almeno due volte al giorno in bagno." },
-        { category: "Oggetti in Tasca", word: "Chiavi", hint: "Aprono cose, fanno rumore metallico." },
-        { category: "Arredamento", word: "Specchio", hint: "Riflette l'immagine, si rompe facilmente." },
-        { category: "Cancelleria", word: "Graffetta", hint: "Tiene insieme i fogli, è di metallo." },
-        { category: "In Cucina", word: "Tostapane", hint: "Fa saltare fuori il cibo quando è caldo." },
-        { category: "Accessori", word: "Occhiali da Sole", hint: "Si mettono sul viso quando c'è molta luce." },
-        { category: "Pulizie", word: "Aspirapolvere", hint: "Fa rumore e risucchia lo sporco." },
-        { category: "Bricolage", word: "Martello", hint: "Serve per battere chiodi o rompere cose." },
-        { category: "Meteo", word: "Grandine", hint: "Ghiaccio che cade dal cielo e fa danni." },
-        { category: "Calzature", word: "Infradito", hint: "Scarpe estive, molto aperte, da spiaggia." },
-        // === NUOVI: LUOGHI ===
-        { category: "Luoghi Pubblici", word: "Biblioteca", hint: "Bisogna stare in silenzio, ci sono libri." },
-        { category: "Luoghi di Svago", word: "Cinema", hint: "Buio, schermo grande, popcorn." },
-        { category: "Luoghi di Relax", word: "Sauna", hint: "Fa molto caldo, c'è vapore, si suda." },
-        { category: "Luoghi Spaventosi", word: "Cimitero", hint: "Posto silenzioso, lapidi, rispetto." },
-        { category: "Trasporti", word: "Stazione Ferroviaria", hint: "Binari, ritardi, gente che parte." },
-        { category: "Negozi", word: "IKEA", hint: "Mobili svedesi, labirinto, polpette." },
-        { category: "Luoghi di Lavoro", word: "Ufficio", hint: "Scrivanie, computer, riunioni noiose." },
-        { category: "Intrattenimento", word: "Circo", hint: "Tendone, acrobati, animali." },
-        { category: "Natura", word: "Grotta", hint: "Buia, umida, sotto terra." },
-        { category: "Edifici", word: "Faro", hint: "Luce che gira, guida le navi." },
-        // === NUOVI: ASTRATTI E DIFFICILI ===
-        { category: "Concetti", word: "Fortuna", hint: "Quando le cose vanno bene per caso." },
-        { category: "Internet", word: "Spoiler", hint: "Ti rovina la fine di un film." },
-        { category: "Relazioni", word: "Tradimento", hint: "Rompere la fiducia di qualcuno." },
-        { category: "Sensazioni", word: "Brivido", hint: "Sensazione di freddo o paura sulla pelle." },
-        { category: "Tempo", word: "Ritardo", hint: "Arrivare dopo l'orario stabilito." },
-        { category: "Legalità", word: "Multa", hint: "Paghi soldi perché hai infranto una regola." },
-        { category: "Emozioni", word: "Noia", hint: "Quando non c'è nulla di interessante da fare." },
-        { category: "Società", word: "Privacy", hint: "Il diritto di stare per fatti propri." },
-        { category: "Logica", word: "Coincidenza", hint: "Due cose succedono insieme per caso." },
-        { category: "Lavoro", word: "Sciopero", hint: "Smettere di lavorare per protesta." },
+       { category: "Pietanza", word: "Pizza" },
+        { category: "Pietanza", word: "Sushi" },
+        { category: "Pietanza", word: "Lasagna" },
+        { category: "Pietanza", word: "Hamburger" },
+        { category: "Pietanza", word: "Kebab" },
+        { category: "Pietanza", word: "Carbonara" },
+        { category: "Pietanza", word: "Risotto" },
+        { category: "Pietanza", word: "Pollo Arrosto" },
+        { category: "Pietanza", word: "Insalata" },
+        { category: "Pietanza", word: "Zuppa" },
+        
+        { category: "Frutta/Verdura", word: "Banana" },
+        { category: "Frutta/Verdura", word: "Mela" },
+        { category: "Frutta/Verdura", word: "Anguria" },
+        { category: "Frutta/Verdura", word: "Carota" },
+        { category: "Frutta/Verdura", word: "Patata" },
+        { category: "Frutta/Verdura", word: "Pomodoro" },
+        { category: "Frutta/Verdura", word: "Limone" },
+        { category: "Frutta/Verdura", word: "Cipolla" },
+        { category: "Frutta/Verdura", word: "Melanzana" },
+        { category: "Frutta/Verdura", word: "Ananas" },
+
+        { category: "Dolce", word: "Gelato" },
+        { category: "Dolce", word: "Tiramisù" },
+        { category: "Dolce", word: "Cioccolato" },
+        { category: "Dolce", word: "Torta di Mele" },
+        { category: "Dolce", word: "Cornetto" },
+        { category: "Dolce", word: "Biscotto" },
+        { category: "Dolce", word: "Miele" },
+        { category: "Dolce", word: "Pancake" },
+        { category: "Dolce", word: "Nutella" },
+        { category: "Dolce", word: "Cheesecake" },
+
+        { category: "Bevanda", word: "Caffè" },
+        { category: "Bevanda", word: "Vino" },
+        { category: "Bevanda", word: "Birra" },
+        { category: "Bevanda", word: "Tè" },
+        { category: "Bevanda", word: "Coca Cola" },
+        { category: "Bevanda", word: "Latte" },
+        { category: "Bevanda", word: "Acqua" },
+        { category: "Bevanda", word: "Spremuta" },
+        { category: "Bevanda", word: "Whisky" },
+        { category: "Bevanda", word: "Champagne" },
+
+        // --- OGGETTI (Categoria Vaga: "Elettrodomestico", "Arredamento", "Oggetto Personale") ---
+        { category: "Elettrodomestico", word: "Lavatrice" },
+        { category: "Elettrodomestico", word: "Frigorifero" },
+        { category: "Elettrodomestico", word: "Microonde" },
+        { category: "Elettrodomestico", word: "Aspirapolvere" },
+        { category: "Elettrodomestico", word: "Phon" },
+        { category: "Elettrodomestico", word: "Tostapane" },
+        { category: "Elettrodomestico", word: "Televisore" },
+        { category: "Elettrodomestico", word: "Ventilatore" },
+        { category: "Elettrodomestico", word: "Frullatore" },
+        { category: "Elettrodomestico", word: "Forno" },
+
+        { category: "Arredamento", word: "Divano" },
+        { category: "Arredamento", word: "Letto" },
+        { category: "Arredamento", word: "Tavolo" },
+        { category: "Arredamento", word: "Sedia" },
+        { category: "Arredamento", word: "Armadio" },
+        { category: "Arredamento", word: "Specchio" },
+        { category: "Arredamento", word: "Libreria" },
+        { category: "Arredamento", word: "Lampada" },
+        { category: "Arredamento", word: "Tappeto" },
+        { category: "Arredamento", word: "Scrivania" },
+
+        { category: "Tecnologia", word: "Smartphone" },
+        { category: "Tecnologia", word: "Computer" },
+        { category: "Tecnologia", word: "Tablet" },
+        { category: "Tecnologia", word: "Cuffie" },
+        { category: "Tecnologia", word: "Mouse" },
+        { category: "Tecnologia", word: "Tastiera" },
+        { category: "Tecnologia", word: "Caricabatterie" },
+        { category: "Tecnologia", word: "Drone" },
+        { category: "Tecnologia", word: "Smartwatch" },
+        { category: "Tecnologia", word: "Fotocamera" },
+
+        { category: "Oggetto Tascabile", word: "Chiavi" },
+        { category: "Oggetto Tascabile", word: "Portafoglio" },
+        { category: "Oggetto Tascabile", word: "Accendino" },
+        { category: "Oggetto Tascabile", word: "Fazzoletto" },
+        { category: "Oggetto Tascabile", word: "Moneta" },
+        { category: "Oggetto Tascabile", word: "Penna" },
+        { category: "Oggetto Tascabile", word: "Occhiali" },
+        { category: "Oggetto Tascabile", word: "Rossetto" },
+        { category: "Oggetto Tascabile", word: "Orologio" },
+        { category: "Oggetto Tascabile", word: "Coltellino" },
+
+        // --- LUOGHI (Categoria Vaga: "Luogo Pubblico", "Luogo Naturale", "Stanza") ---
+        { category: "Luogo Pubblico", word: "Scuola" },
+        { category: "Luogo Pubblico", word: "Ospedale" },
+        { category: "Luogo Pubblico", word: "Aeroporto" },
+        { category: "Luogo Pubblico", word: "Stazione" },
+        { category: "Luogo Pubblico", word: "Ristorante" },
+        { category: "Luogo Pubblico", word: "Supermercato" },
+        { category: "Luogo Pubblico", word: "Cinema" },
+        { category: "Luogo Pubblico", word: "Palestra" },
+        { category: "Luogo Pubblico", word: "Chiesa" },
+        { category: "Luogo Pubblico", word: "Banca" },
+        { category: "Luogo Pubblico", word: "Museo" },
+        { category: "Luogo Pubblico", word: "Discoteca" },
+        { category: "Luogo Pubblico", word: "Farmacia" },
+        { category: "Luogo Pubblico", word: "Biblioteca" },
+        { category: "Luogo Pubblico", word: "Stadio" },
+
+        { category: "Luogo Naturale", word: "Spiaggia" },
+        { category: "Luogo Naturale", word: "Montagna" },
+        { category: "Luogo Naturale", word: "Bosco" },
+        { category: "Luogo Naturale", word: "Deserto" },
+        { category: "Luogo Naturale", word: "Grotta" },
+        { category: "Luogo Naturale", word: "Lago" },
+        { category: "Luogo Naturale", word: "Vulcano" },
+        { category: "Luogo Naturale", word: "Cascata" },
+        { category: "Luogo Naturale", word: "Isola" },
+        { category: "Luogo Naturale", word: "Giungla" },
+
+        { category: "Stanza", word: "Cucina" },
+        { category: "Stanza", word: "Bagno" },
+        { category: "Stanza", word: "Camera da Letto" },
+        { category: "Stanza", word: "Salotto" },
+        { category: "Stanza", word: "Garage" },
+        { category: "Stanza", word: "Soffitta" },
+        { category: "Stanza", word: "Cantina" },
+        { category: "Stanza", word: "Ufficio" },
+        { category: "Stanza", word: "Classe" },
+        { category: "Stanza", word: "Corridoio" },
+
+        // --- ANIMALI (Categoria Vaga: "Animale") ---
+        { category: "Animale", word: "Cane" },
+        { category: "Animale", word: "Gatto" },
+        { category: "Animale", word: "Topo" },
+        { category: "Animale", word: "Leone" },
+        { category: "Animale", word: "Elefante" },
+        { category: "Animale", word: "Cavallo" },
+        { category: "Animale", word: "Mucca" },
+        { category: "Animale", word: "Maiale" },
+        { category: "Animale", word: "Serpente" },
+        { category: "Animale", word: "Aquila" },
+        { category: "Animale", word: "Pinguino" },
+        { category: "Animale", word: "Squalo" },
+        { category: "Animale", word: "Delfino" },
+        { category: "Animale", word: "Balena" },
+        { category: "Animale", word: "Ragno" },
+        { category: "Animale", word: "Ape" },
+        { category: "Animale", word: "Farfalla" },
+        { category: "Animale", word: "Lupo" },
+        { category: "Animale", word: "Orso" },
+        { category: "Animale", word: "Scimmia" },
+        { category: "Animale", word: "Giraffa" },
+        { category: "Animale", word: "Canguro" },
+        { category: "Animale", word: "Panda" },
+        { category: "Animale", word: "Coccodrillo" },
+        { category: "Animale", word: "Tartaruga" },
+
+        // --- MEZZI DI TRASPORTO (Categoria Vaga: "Veicolo") ---
+        { category: "Veicolo", word: "Automobile" },
+        { category: "Veicolo", word: "Moto" },
+        { category: "Veicolo", word: "Bicicletta" },
+        { category: "Veicolo", word: "Autobus" },
+        { category: "Veicolo", word: "Treno" },
+        { category: "Veicolo", word: "Aereo" },
+        { category: "Veicolo", word: "Nave" },
+        { category: "Veicolo", word: "Elicottero" },
+        { category: "Veicolo", word: "Sottomarino" },
+        { category: "Veicolo", word: "Camion" },
+        { category: "Veicolo", word: "Trattore" },
+        { category: "Veicolo", word: "Monopattino" },
+        { category: "Veicolo", word: "Skateboard" },
+        { category: "Veicolo", word: "Barca a vela" },
+        { category: "Veicolo", word: "Ambulanza" },
+
+        // --- PROFESSIONI (Categoria Vaga: "Lavoro") ---
+        { category: "Lavoro", word: "Dottore" },
+        { category: "Lavoro", word: "Poliziotto" },
+        { category: "Lavoro", word: "Pompiere" },
+        { category: "Lavoro", word: "Insegnante" },
+        { category: "Lavoro", word: "Avvocato" },
+        { category: "Lavoro", word: "Cuoco" },
+        { category: "Lavoro", word: "Cameriere" },
+        { category: "Lavoro", word: "Barbiere" },
+        { category: "Lavoro", word: "Meccanico" },
+        { category: "Lavoro", word: "Contadino" },
+        { category: "Lavoro", word: "Muratore" },
+        { category: "Lavoro", word: "Attore" },
+        { category: "Lavoro", word: "Cantante" },
+        { category: "Lavoro", word: "Calciatore" },
+        { category: "Lavoro", word: "Pilota" },
+        { category: "Lavoro", word: "Astronauta" },
+        { category: "Lavoro", word: "Giudice" },
+        { category: "Lavoro", word: "Scienziato" },
+        { category: "Lavoro", word: "Pittore" },
+        { category: "Lavoro", word: "Fotografo" },
+
+        // --- ABBIGLIAMENTO (Categoria Vaga: "Indumento") ---
+        { category: "Indumento", word: "Maglietta" },
+        { category: "Indumento", word: "Pantaloni" },
+        { category: "Indumento", word: "Scarpe" },
+        { category: "Indumento", word: "Calzini" },
+        { category: "Indumento", word: "Mutande" },
+        { category: "Indumento", word: "Giacca" },
+        { category: "Indumento", word: "Cappello" },
+        { category: "Indumento", word: "Sciarpa" },
+        { category: "Indumento", word: "Guanti" },
+        { category: "Indumento", word: "Cintura" },
+        { category: "Indumento", word: "Cravatta" },
+        { category: "Indumento", word: "Costume da bagno" },
+        { category: "Indumento", word: "Pigiama" },
+        { category: "Indumento", word: "Accappatoio" },
+        { category: "Indumento", word: "Vestito da sposa" },
+
+        // --- STRUMENTI MUSICALI (Categoria Vaga: "Musica") ---
+        { category: "Musica", word: "Chitarra" },
+        { category: "Musica", word: "Pianoforte" },
+        { category: "Musica", word: "Batteria" },
+        { category: "Musica", word: "Violino" },
+        { category: "Musica", word: "Flauto" },
+        { category: "Musica", word: "Tromba" },
+        { category: "Musica", word: "Sassofono" },
+        { category: "Musica", word: "Microfono" },
+        { category: "Musica", word: "Cuffie" },
+        { category: "Musica", word: "Radio" },
+
+        // --- CORPO UMANO (Categoria Vaga: "Parte del Corpo") ---
+        { category: "Parte del Corpo", word: "Mano" },
+        { category: "Parte del Corpo", word: "Piede" },
+        { category: "Parte del Corpo", word: "Testa" },
+        { category: "Parte del Corpo", word: "Occhi" },
+        { category: "Parte del Corpo", word: "Naso" },
+        { category: "Parte del Corpo", word: "Bocca" },
+        { category: "Parte del Corpo", word: "Orecchie" },
+        { category: "Parte del Corpo", word: "Cuore" },
+        { category: "Parte del Corpo", word: "Cervello" },
+        { category: "Parte del Corpo", word: "Denti" },
+        { category: "Parte del Corpo", word: "Capelli" },
+        { category: "Parte del Corpo", word: "Ginocchio" },
+        { category: "Parte del Corpo", word: "Pancia" },
+        { category: "Parte del Corpo", word: "Schiena" },
+        { category: "Parte del Corpo", word: "Dito" },
+
+        // --- SPORT (Categoria Vaga: "Sport") ---
+        { category: "Sport", word: "Calcio" },
+        { category: "Sport", word: "Basket" },
+        { category: "Sport", word: "Tennis" },
+        { category: "Sport", word: "Pallavolo" },
+        { category: "Sport", word: "Nuoto" },
+        { category: "Sport", word: "Boxe" },
+        { category: "Sport", word: "Golf" },
+        { category: "Sport", word: "Sci" },
+        { category: "Sport", word: "Ciclismo" },
+        { category: "Sport", word: "Formula 1" }
     ];
   }
 
   initGame(currentPlayers) {
-    // Clona i giocatori assicurandosi di mantenere il sessionId
+    // Creiamo la copia locale dei player con le proprietà di gioco
     this.players = currentPlayers.map(p => ({
       ...p,
       role: 'CIVILIAN', 
@@ -82,31 +273,31 @@ export class ImposterGame {
     this.gameState = 'LOBBY';
     this.votes = {};
 
-    if (this.players.length > 0) {
-        this.players.forEach(p => {
-            this.io.to(p.id).emit('set_view', 'IMPOSTER_LOBBY');
-        });
-    }
+    this.players.forEach(p => {
+        this.io.to(p.id).emit('set_view', 'IMPOSTER_LOBBY');
+    });
   }
 
   startGame() {
     this.gameState = 'GAME';
     this.votes = {};
+    
+    // Reset stato
+    this.players.forEach(p => {
+        p.isAlive = true;
+        p.role = 'CIVILIAN';
+        p.secretInfo = '';
+    });
 
     const randomIndex = Math.floor(Math.random() * this.database.length);
     this.currentData = this.database[randomIndex];
 
-    // Scegli Impostore a caso
     const imposterIndex = Math.floor(Math.random() * this.players.length);
-    // <--- MODIFICA: Salviamo la sessione, non il socket ID
     this.imposterSessionId = this.players[imposterIndex].sessionId; 
 
-    console.log(`🕵️ Parola: ${this.currentData.word} | Impostore: ${this.players[imposterIndex].name}`);
-
+    // Distribuzione
     this.players.forEach((p) => {
-        // Controllo ruolo basato su SessionID
         const isImposter = (p.sessionId === this.imposterSessionId);
-
         if (isImposter) {
             p.role = 'IMPOSTER';
             p.secretInfo = this.currentData.category; 
@@ -125,32 +316,29 @@ export class ImposterGame {
     this.io.emit('imposter_game_started');
   }
 
-  // --- GESTIONE RICONNESSIONE (FIX REFRESH) ---
+  // --- FIX QUI SOTTO ---
   syncSinglePlayer(socket, player) {
-      // 1. Trova il giocatore nella lista interna usando il sessionId
       const internalPlayer = this.players.find(p => p.sessionId === player.sessionId);
-      
-      // 2. Aggiorna il socket ID interno (il telefono è cambiato!)
-      if (internalPlayer) {
-          internalPlayer.id = socket.id;
-      }
+      if (internalPlayer) internalPlayer.id = socket.id;
 
-      // 3. Rimanda la vista corretta in base allo stato
+      // FIX CRITICO: Inviamo la lista "arrichita" (con isAlive) a TUTTI.
+      // Questo sovrascrive la lista "nuda" inviata da server.js al riconnettersi.
+      this.io.emit('update_player_list', this.players);
+
+      // Restore view per chi si è riconnesso
       if (this.gameState === 'LOBBY') {
           this.io.to(socket.id).emit('set_view', 'IMPOSTER_LOBBY');
       } 
       else if (this.gameState === 'GAME') {
-          // Ricalcola al volo cosa deve vedere
           const isImposter = (player.sessionId === this.imposterSessionId);
-          const role = isImposter ? 'IMPOSTER' : 'CIVILIAN';
-          const info = isImposter ? this.currentData.category : this.currentData.word;
-
-          this.io.to(socket.id).emit('imposter_role_data', { role, info });
+          this.io.to(socket.id).emit('imposter_role_data', { 
+              role: isImposter ? 'IMPOSTER' : 'CIVILIAN', 
+              info: isImposter ? this.currentData.category : this.currentData.word 
+          });
           this.io.to(socket.id).emit('set_view', 'IMPOSTER_ROLE');
       }
       else if (this.gameState === 'VOTING') {
           this.io.to(socket.id).emit('set_view', 'IMPOSTER_VOTE');
-          // Rimanda anche lo stato dei voti attuali se serve
           this.io.to(socket.id).emit('imposter_vote_update', this.votes);
       }
       else if (this.gameState === 'GAME_OVER') {
@@ -161,6 +349,7 @@ export class ImposterGame {
   handleForceVoting() {
       this.gameState = 'VOTING';
       this.io.emit('imposter_voting_started');
+      // Anche qui, assicuriamoci che tutti abbiano la lista con isAlive corretto
       this.io.emit('update_player_list', this.players);
       this.players.forEach(p => this.io.to(p.id).emit('set_view', 'IMPOSTER_VOTE'));
   }
@@ -168,15 +357,10 @@ export class ImposterGame {
   handleVote(voterId, targetId) {
       if (this.gameState !== 'VOTING') return;
       
-      // Nota: voterId qui è il socket ID. 
-      // Va bene perché syncSinglePlayer ha aggiornato l'ID interno.
       this.votes[voterId] = targetId;
       this.io.emit('imposter_vote_update', this.votes);
       
-      // Conta i voti solo dei giocatori vivi e connessi
       const activeLivingPlayers = this.players.filter(p => p.isAlive && p.isConnected !== false);
-      
-      // Se abbiamo abbastanza voti (o tutti hanno votato)
       if (Object.keys(this.votes).length >= activeLivingPlayers.length) {
           this.calculateResults();
       }
@@ -190,29 +374,19 @@ export class ImposterGame {
 
       let maxVotes = 0;
       let eliminatedId = null;
-      
       for (const [id, count] of Object.entries(counts)) {
-          if (count > maxVotes) {
-              maxVotes = count;
-              eliminatedId = id;
-          }
+          if (count > maxVotes) { maxVotes = count; eliminatedId = id; }
       }
 
       this.gameState = 'GAME_OVER';
       
-      // Trova i giocatori usando ID o SessionID per sicurezza
       const imposterPlayer = this.players.find(p => p.sessionId === this.imposterSessionId);
       const eliminatedPlayer = this.players.find(p => p.id === eliminatedId);
       
       let winner = "";
-      
-      if (!eliminatedPlayer) {
-          winner = "IMPOSTER"; 
-      } else if (eliminatedPlayer.sessionId === this.imposterSessionId) {
-          winner = "CIVILIANS"; // Impostore beccato
-      } else {
-          winner = "IMPOSTER"; // Innocente eliminato
-      }
+      if (!eliminatedPlayer) winner = "IMPOSTER"; 
+      else if (eliminatedPlayer.sessionId === this.imposterSessionId) winner = "CIVILIANS"; 
+      else winner = "IMPOSTER"; 
 
       const resultData = {
           winner,
@@ -223,5 +397,22 @@ export class ImposterGame {
 
       this.io.emit('imposter_game_over', resultData);
       this.io.emit('set_view', 'GAME_OVER');
+  }
+
+  setupListeners(socket) {
+      socket.removeAllListeners('imposter_start');
+      socket.removeAllListeners('imposter_play_again');
+      socket.removeAllListeners('imposter_vote');
+      socket.removeAllListeners('imposter_force_voting');
+      socket.removeAllListeners('imposter_sync');
+
+      socket.on('imposter_start', () => this.startGame());
+      socket.on('imposter_play_again', () => this.startGame()); 
+      socket.on('imposter_vote', (id) => this.handleVote(socket.id, id));
+      socket.on('imposter_force_voting', () => this.handleForceVoting());
+      socket.on('imposter_sync', () => {
+          const p = this.players.find(x => x.id === socket.id);
+          if(p) this.syncSinglePlayer(socket, p);
+      });
   }
 }

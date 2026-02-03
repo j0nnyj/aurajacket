@@ -34,8 +34,27 @@ export default function HostMenu({ socket }) {
       if(window.confirm("RESET TOTALE? Tutti i giocatori verranno disconnessi.")) socket.emit('host_new_session');
   };
 
-  const joinUrl = `http://${serverInfo.ip}:${serverInfo.port}`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=5&data=${joinUrl}`;
+  // --- FIX LOGICA URL/QR CODE ---
+  const getSystemData = () => {
+      // 1. Se siamo su Render (o HTTPS), usa l'URL del browser
+      const isCloud = window.location.hostname.includes('onrender.com') || window.location.protocol === 'https:';
+      
+      if (isCloud) {
+          return {
+              url: window.location.origin, // Es: https://aurajacket.onrender.com
+              display: window.location.hostname // Es: aurajacket.onrender.com
+          };
+      }
+      
+      // 2. Altrimenti usa l'IP locale del server
+      return {
+          url: `http://${serverInfo.ip}:${serverInfo.port}`,
+          display: serverInfo.ip
+      };
+  };
+
+  const systemData = getSystemData();
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=5&data=${encodeURIComponent(systemData.url)}`;
 
   return (
     <div className="min-h-screen w-full bg-[#090014] text-white font-sans overflow-x-hidden flex flex-col relative selection:bg-fuchsia-500 selection:text-white">
@@ -54,7 +73,7 @@ export default function HostMenu({ socket }) {
                     <span className="text-white not-italic ml-1 animate-pulse">_</span>
                 </h1>
                 <div className="inline-flex items-center gap-3 bg-black/50 px-4 py-2 rounded-sm border-l-4 border-cyan-500 backdrop-blur-md mt-2 shadow-[0_0_20px_rgba(0,255,255,0.2)]">
-                     <span className="font-mono text-sm text-cyan-300 tracking-widest uppercase font-bold">SYSTEM READY // IP: {serverInfo.ip}</span>
+                      <span className="font-mono text-sm text-cyan-300 tracking-widest uppercase font-bold">SYSTEM READY // HOST: {systemData.display}</span>
                 </div>
             </div>
             
@@ -102,14 +121,7 @@ export default function HostMenu({ socket }) {
                         onClick={() => startGame('/host/trashtalk', 'TRASHTALK')}
                     />
 
-                    {/* NUOVO GIOCO: IS IT YOU? */}
-                    <SynthCard 
-                        title="IS IT YOU?"
-                        tagline="Foto & Disegni"
-                        color="fuchsia" // Nuovo colore definito sotto
-                        icon="📸"
-                        onClick={() => startGame('/host/isityou', 'IS_IT_YOU')}
-                    />
+                    
 
                 </div>
             </div>
@@ -139,10 +151,10 @@ export default function HostMenu({ socket }) {
                                 </div>
 
                                 <div className="w-full bg-black/80 border-2 border-fuchsia-500/50 p-3 rounded-lg">
-                                    <p className="font-mono text-lg md:text-2xl font-bold text-fuchsia-400 tracking-wider glow-text">
-                                        {serverInfo.ip}
+                                    <p className="font-mono text-lg md:text-xl font-bold text-fuchsia-400 tracking-wider glow-text break-all">
+                                        {systemData.display}
                                     </p>
-                                    <p className="text-cyan-500/70 font-mono text-xs uppercase mt-1">PORT: 3000 // STATUS: OPEN</p>
+                                    <p className="text-cyan-500/70 font-mono text-xs uppercase mt-1">STATUS: ONLINE</p>
                                 </div>
                             </div>
                         </div>
@@ -157,8 +169,8 @@ export default function HostMenu({ socket }) {
             
             <div className="flex-1 flex items-center px-6 overflow-x-auto custom-scrollbar-x py-2">
                 <div className="mr-6 flex flex-col justify-center shrink-0">
-                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-400">Player Slots</span>
-                     <span className="text-2xl font-black italic text-fuchsia-500 drop-shadow-[0_0_5px_#d946ef]">{players.length} ACTIVE</span>
+                      <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-400">Player Slots</span>
+                      <span className="text-2xl font-black italic text-fuchsia-500 drop-shadow-[0_0_5px_#d946ef]">{players.length} ACTIVE</span>
                 </div>
 
                 {players.length === 0 ? (
@@ -208,7 +220,6 @@ export default function HostMenu({ socket }) {
 
 // --- COMPONENTE SYNTH-CARD ---
 function SynthCard({ title, tagline, color, icon, onClick }) {
-    // Definizione colori, aggiunto 'fuchsia' per IsItYou
     const colors = {
         cyan: {
             border: 'border-cyan-500',

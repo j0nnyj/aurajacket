@@ -5,32 +5,43 @@ export default function IsItYouMobile({ socket, view, setView }) {
   const [players, setPlayers] = useState([]);
   const [bgImage, setBgImage] = useState(null);
   const [gallery, setGallery] = useState([]);
+  const [progress, setProgress] = useState(null);
+  const [isUploading, setIsUploading] = useState(false); // Nuovo stato per loading
 
-  // Refs
   const fileInputRef = useRef(null);
   const drawCanvasRef = useRef(null);
   
-  // Drawing Settings
   const [isDrawing, setIsDrawing] = useState(false);
   const [color, setColor] = useState('#FF0000'); 
 
   useEffect(() => {
-    // APPENA CARICATO, CHIEDI SYNC AGGRESSIVAMENTE
     socket.emit('isityou_sync');
     
     socket.on('update_player_list', setPlayers);
+    
     socket.on('isityou_task', (data) => {
         setTask(data);
         if (data && data.bgImage) setBgImage(data.bgImage);
+        setIsUploading(false); // Reset in caso di nuovo round
     });
+    
     socket.on('isityou_gallery', setGallery);
+    
+    socket.on('isityou_progress', (p) => setProgress(p));
     
     return () => {
         socket.off('update_player_list');
         socket.off('isityou_task');
         socket.off('isityou_gallery');
+        socket.off('isityou_progress');
     };
   }, [socket]);
+
+  // RESET STATI QUANDO CAMBIA VISTA
+  useEffect(() => {
+      setIsUploading(false);
+      setProgress(null);
+  }, [view]);
 
   // --- LOGICA DISEGNO ---
   useEffect(() => {
@@ -38,7 +49,9 @@ export default function IsItYouMobile({ socket, view, setView }) {
           const canvas = drawCanvasRef.current;
           const ctx = canvas.getContext('2d');
           const img = new Image();
+          img.crossOrigin = "Anonymous"; // Importante per canvas
           img.onload = () => {
+              ctx.clearRect(0,0,canvas.width, canvas.height);
               ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
           };
           img.src = bgImage;
@@ -68,14 +81,12 @@ export default function IsItYouMobile({ socket, view, setView }) {
       const rect = drawCanvasRef.current.getBoundingClientRect();
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      return {
-          offsetX: clientX - rect.left,
-          offsetY: clientY - rect.top
-      };
+      return { offsetX: clientX - rect.left, offsetY: clientY - rect.top };
   };
 
   const submitDrawing = () => {
       if (!drawCanvasRef.current) return;
+      setIsUploading(true); // Mostra loader
       const dataUrl = drawCanvasRef.current.toDataURL('image/jpeg', 0.6);
       socket.emit('isityou_upload', { img: dataUrl, type: 'ROUND' });
       setView('ISITYOU_WAITING');
@@ -85,18 +96,17 @@ export default function IsItYouMobile({ socket, view, setView }) {
   const handleFile = (e) => {
       const file = e.target.files[0];
       if (file) {
+          setIsUploading(true); // Mostra loader
           const reader = new FileReader();
           reader.onload = (ev) => {
               const img = new Image();
               img.onload = () => {
                   const canvas = document.createElement('canvas');
                   const MAX_SIZE = 600; 
-                  let w = img.width;
-                  let h = img.height;
+                  let w = img.width; let h = img.height;
                   if (w > h) { if (w > MAX_SIZE) { h *= MAX_SIZE/w; w = MAX_SIZE; } }
                   else { if (h > MAX_SIZE) { w *= MAX_SIZE/h; h = MAX_SIZE; } }
-                  canvas.width = w;
-                  canvas.height = h;
+                  canvas.width = w; canvas.height = h;
                   const ctx = canvas.getContext('2d');
                   ctx.drawImage(img, 0, 0, w, h);
                   
@@ -111,12 +121,12 @@ export default function IsItYouMobile({ socket, view, setView }) {
       }
   };
 
-  const votePoll = (target, joker) => {
-      socket.emit('isityou_vote', { target, joker });
+  const vote = (targetId, joker) => {
+      socket.emit('isityou_vote', { target: targetId, joker });
       setView('ISITYOU_WAITING');
   };
 
-  // --- VISTE ---
+  // --- UI COMPONENTS ---
 
   if (view === 'ISITYOU_SELFIE' || view === 'ISITYOU_CAMERA') {
       return (
@@ -124,11 +134,18 @@ export default function IsItYouMobile({ socket, view, setView }) {
               <h1 className="text-2xl font-bold mb-4 uppercase">
                   {view === 'ISITYOU_SELFIE' ? 'SELFIE TIME!' : 'FOTO CHALLENGE'}
               </h1>
-              {task && <p className="mb-6 text-yellow-400 italic">"{task.text}"</p>}
-              <button onClick={() => fileInputRef.current.click()} className="w-40 h-40 bg-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition">
-                  <span className="text-5xl">📷</span>
-              </button>
-              <input ref={fileInputRef} type="file" accept="image/*" capture="user" className="hidden" onChange={handleFile} />
+              {task && <p className="mb-6 text-yellow-400 italic font-bold">"{task.text}"</p>}
+              
+              {isUploading ? (
+                  <div className="animate-pulse text-xl font-bold">CARICAMENTO...</div>
+              ) : (
+                  <>
+                      <button onClick={() => fileInputRef.current.click()} className="w-40 h-40 bg-white rounded-full flex items-center justify-center shadow-lg active:scale-90 transition">
+                          <span className="text-5xl">📷</span>
+                      </button>
+                      <input ref={fileInputRef} type="file" accept="image/*" capture="user" className="hidden" onChange={handleFile} />
+                  </>
+              )}
           </div>
       );
   }
@@ -136,7 +153,7 @@ export default function IsItYouMobile({ socket, view, setView }) {
   if (view === 'ISITYOU_CANVAS') {
       return (
           <div className="h-screen bg-gray-900 flex flex-col items-center pt-2 overflow-hidden touch-none">
-              <div className="text-white text-sm font-bold mb-1">DISEGNA SU QUESTA FACCIA!</div>
+              <div className="text-white text-sm font-bold mb-1"> DISEGNA SU: {task?.targetName} </div>
               <canvas 
                   ref={drawCanvasRef} width={320} height={400} 
                   className="bg-white rounded shadow-lg touch-none"
@@ -149,7 +166,9 @@ export default function IsItYouMobile({ socket, view, setView }) {
                         className={`w-8 h-8 rounded-full border-2 ${color===c ? 'border-white scale-125' : 'border-transparent'}`} />
                   ))}
               </div>
-              <button onClick={submitDrawing} className="mt-3 bg-green-600 text-white px-8 py-3 rounded-full font-bold uppercase">INVIA</button>
+              <button onClick={submitDrawing} disabled={isUploading} className="mt-3 bg-green-600 text-white px-8 py-3 rounded-full font-bold uppercase disabled:opacity-50">
+                  {isUploading ? 'INVIO...' : 'INVIA'}
+              </button>
           </div>
       );
   }
@@ -163,14 +182,14 @@ export default function IsItYouMobile({ socket, view, setView }) {
               <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-3 pb-20">
                   {view === 'ISITYOU_VOTE_POLL' ? (
                       players.map(p => (
-                          <button key={p.sessionId} onClick={() => votePoll(p.sessionId, false)} className="bg-white p-4 rounded-xl shadow flex flex-col items-center active:bg-yellow-200">
+                          <button key={p.sessionId} onClick={() => vote(p.sessionId, false)} className="bg-white p-4 rounded-xl shadow flex flex-col items-center active:bg-yellow-200">
                               <div className="text-3xl mb-1">{p.avatar}</div>
                               <span className="font-bold text-xs uppercase">{p.name}</span>
                           </button>
                       ))
                   ) : (
                       gallery.map(g => (
-                          <button key={g.id} onClick={() => votePoll(g.id, false)} className="relative aspect-square active:scale-95 transition">
+                          <button key={g.id} onClick={() => vote(g.id, false)} className="relative aspect-square active:scale-95 transition">
                               <img src={g.image} className="w-full h-full object-cover rounded-lg border-2 border-white shadow" />
                               <span className="absolute bottom-0 left-0 bg-black/50 text-white text-xs px-2">{g.name}</span>
                           </button>
@@ -186,11 +205,17 @@ export default function IsItYouMobile({ socket, view, setView }) {
       );
   }
 
-  // --- LOADING / ATTESA (CON BOTTONE FIX) ---
+  // --- ATTESA (CON FEEDBACK) ---
   if (view === 'ISITYOU_WAITING') {
       return (
           <div className="h-screen bg-black text-white flex flex-col items-center justify-center font-bold">
-              <p className="mb-4">ATTENDI...</p>
+              <div className="mb-6 text-4xl animate-bounce">⏳</div>
+              <p className="mb-2 text-xl">ATTENDI GLI ALTRI...</p>
+              {progress && (
+                  <p className="text-green-400 font-mono mb-8">
+                      {progress.current} / {progress.total}
+                  </p>
+              )}
               <button 
                   onClick={() => socket.emit('isityou_sync')} 
                   className="px-6 py-2 bg-gray-800 rounded-full text-xs uppercase border border-white/20 hover:bg-white/10"
@@ -199,6 +224,10 @@ export default function IsItYouMobile({ socket, view, setView }) {
               </button>
           </div>
       );
+  }
+  
+  if (view === 'ISITYOU_RESULT') {
+      return <div className="h-screen bg-green-600 text-white flex items-center justify-center font-black text-2xl">GUARDA LA TV!</div>;
   }
 
   return <div className="h-screen bg-black text-white flex items-center justify-center">Loading...</div>;

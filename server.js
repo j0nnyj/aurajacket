@@ -10,7 +10,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { ImposterGame } from './backend/games/Imposter.js';
 import { LiarsBarGame } from './backend/games/LiarsBar.js';
 import { TrashTalkGame } from './backend/games/TrashTalk.js';
-import { IsItYouGame } from './backend/games/IsItYou.js'; // <--- IMPORTATO
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -21,7 +20,9 @@ const httpServer = createServer(app);
 app.use(express.static(join(__dirname, 'dist')));
 
 const io = new Server(httpServer, {
-  cors: { origin: "*" }
+  cors: { origin: "*" },
+  maxHttpBufferSize: 1e8, // 100 MB per upload immagini
+  pingTimeout: 60000 
 });
 
 // STATO GLOBALE
@@ -32,7 +33,6 @@ let activeGame = 'LOBBY';
 const imposterGame = new ImposterGame(io);
 const liarsBarGame = new LiarsBarGame(io);
 const trashTalkGame = new TrashTalkGame(io);
-const isItYouGame = new IsItYouGame(io); // <--- ISTANZA CREATA
 
 io.on('connection', (socket) => {
   console.log(`⚡ Nuova connessione: ${socket.id}`);
@@ -60,9 +60,6 @@ io.on('connection', (socket) => {
     }
     else if (gameName === 'TRASHTALK') { 
         trashTalkGame.initGame(players); 
-    }
-    else if (gameName === 'IS_IT_YOU') { // <--- NUOVO GIOCO
-        isItYouGame.initGame(players); 
     }
   });
 
@@ -111,15 +108,15 @@ io.on('connection', (socket) => {
           existingPlayer.id = socket.id; 
           existingPlayer.isConnected = true;
           
-          // Aggiorna ID nei giochi specifici
+          // Aggiorna ID nei giochi specifici (Importante per far funzionare i giochi dopo refresh)
           if (activeGame === 'TRASHTALK') {
              const p = trashTalkGame.players.find(x => x.sessionId === existingPlayer.sessionId);
              if (p) p.id = socket.id;
           }
-          else if (activeGame === 'IS_IT_YOU') { // <--- AGGIORNAMENTO ID IS_IT_YOU
-             const p = isItYouGame.players.find(x => x.sessionId === existingPlayer.sessionId);
-             if (p) p.id = socket.id;
+          else if (activeGame === 'LIARS_BAR') {
+             liarsBarGame.reconnectPlayer(socket, existingPlayer, null);
           }
+          // Imposter fa il sync nel restorePlayerView chiamando syncSinglePlayer
 
           socket.emit('login_success', existingPlayer);
           restorePlayerView(socket, existingPlayer);
@@ -156,8 +153,6 @@ io.on('connection', (socket) => {
              trashTalkGame.removePlayer(playerToRemove.sessionId);
           } else if (activeGame === 'LIARS_BAR') {
              liarsBarGame.removePlayer(playerToRemove.sessionId);
-          } else if (activeGame === 'IS_IT_YOU') { // <--- RIMOZIONE IS_IT_YOU
-             isItYouGame.removePlayer(playerToRemove.sessionId); // (Nota: dovrai aggiungere questo metodo nella classe se vuoi pulire memoria, ma per ora è opzionale)
           }
 
           io.emit('update_player_list', players);
@@ -184,9 +179,6 @@ io.on('connection', (socket) => {
       else if (activeGame === 'TRASHTALK') {
           trashTalkGame.syncSinglePlayer(socket, player);
       }
-      else if (activeGame === 'IS_IT_YOU') { // <--- SYNC IS_IT_YOU
-          isItYouGame.syncSinglePlayer(socket, player);
-      } 
       else {
           socket.emit('set_view', 'GLOBAL_LOBBY');
       }
@@ -200,14 +192,8 @@ io.on('connection', (socket) => {
   liarsBarGame.setupListeners(socket);
 
   // --- IMPOSTER ---
-  socket.on('imposter_start', () => imposterGame.startGame());
-  socket.on('imposter_vote', (id) => imposterGame.handleVote(socket.id, id));
-  socket.on('imposter_task_complete', () => imposterGame.handleTaskComplete(socket.id));
-  socket.on('imposter_sync', () => {
-      const p = players.find(x => x.id === socket.id);
-      if(p) imposterGame.syncSinglePlayer(socket, p);
-  });
-  socket.on('imposter_force_voting', () => imposterGame.handleForceVoting());
+  // Importante: deleghiamo tutto al file Imposter.js che gestisce anche 'play_again'
+  imposterGame.setupListeners(socket);
 
   // --- TRASH TALK ---
   socket.on('trashtalk_start', () => trashTalkGame.startGame());
@@ -217,9 +203,6 @@ io.on('connection', (socket) => {
       const p = players.find(x => x.id === socket.id);
       if(p) trashTalkGame.syncSinglePlayer(socket, p);
   });
-
-  // --- IS IT YOU? ---
-  isItYouGame.setupListeners(socket); // <--- ATTIVAZIONE LISTENER
 
 });
 
