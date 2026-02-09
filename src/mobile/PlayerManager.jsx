@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import ImposterMobile from './ImposterMobile';
 import LiarsBarMobile from './LiarsBarMobile';
 import TrashTalkMobile from './TrashTalkMobile';
+import BufalaMobile from './BufalaMobile';
 
 
 const AVATARS = ['😎', '👻', '🤖', '💩', '👽', '🐶', '🐱', '🦄', '🐯', '🐼', '🦊', '🦁', '💀', '🤡', '🤠', '🎃'];
@@ -20,6 +21,7 @@ const renderAvatar = (avatarValue, size = 'text-4xl') => {
 function MobileGameRouter({ socket, view, setView, playerName }) {
     if (view.startsWith('LIARS_')) return <LiarsBarMobile socket={socket} view={view} setView={setView} />;
     if (view.startsWith('TRASHTALK_')) return <TrashTalkMobile socket={socket} view={view} setView={setView} />;
+    if (view.startsWith('BUFALA_')) return <BufalaMobile socket={socket} view={view} setView={setView} />;
     
    
     

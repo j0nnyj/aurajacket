@@ -7,6 +7,7 @@ import HostMenu from './pages/HostMenu';
 import ImposterGame from './games/ImposterGame';
 import LiarsBarGame from './games/LiarsBarGame';
 import TrashTalkGame from './games/TrashTalkGame';
+import BufalaGame from './games/BufalaGame';
 
 
 // COMPONENTE PLAYER MOBILE
@@ -70,7 +71,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="fixed top-3 right-3 z-[9999] font-mono text-[10px] font-bold uppercase tracking-widest pointer-events-none select-none text-white/20">
-          made by jonny <span className="text-white ml-1 opacity-50">beta 0.07</span>
+          made by jonny <span className="text-white ml-1 opacity-50">beta 0.08</span>
       </div>
       <Routes>
         <Route path="/host" element={<HostLayout><HostMenu socket={socket} /></HostLayout>} />
@@ -79,6 +80,7 @@ export default function App() {
         <Route path="/host/imposter" element={<HostLayout><ImposterGame socket={socket} /></HostLayout>} />
         <Route path="/host/liarsbar" element={<HostLayout><LiarsBarGame socket={socket} /></HostLayout>} />
         <Route path="/host/trashtalk" element={<HostLayout><TrashTalkGame socket={socket} /></HostLayout>} />
+        <Route path="/host/bufala" element={<HostLayout><BufalaGame socket={socket} /></HostLayout>} />
         
         
         

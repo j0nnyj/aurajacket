@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ImposterGame } from './backend/games/Imposter.js';
 import { LiarsBarGame } from './backend/games/LiarsBar.js';
 import { TrashTalkGame } from './backend/games/TrashTalk.js';
+import { BufalaGame } from './backend/games/Bufala.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,6 +34,7 @@ let activeGame = 'LOBBY';
 const imposterGame = new ImposterGame(io);
 const liarsBarGame = new LiarsBarGame(io);
 const trashTalkGame = new TrashTalkGame(io);
+const bufalaGame = new BufalaGame(io); 
 
 io.on('connection', (socket) => {
   console.log(`⚡ Nuova connessione: ${socket.id}`);
@@ -60,6 +62,9 @@ io.on('connection', (socket) => {
     }
     else if (gameName === 'TRASHTALK') { 
         trashTalkGame.initGame(players); 
+    }
+    else if (gameName === 'BUFALA') {
+         bufalaGame.initGame(players); 
     }
   });
 
@@ -203,6 +208,8 @@ io.on('connection', (socket) => {
       const p = players.find(x => x.id === socket.id);
       if(p) trashTalkGame.syncSinglePlayer(socket, p);
   });
+
+  bufalaGame.setupListeners(socket);
 
 });
 

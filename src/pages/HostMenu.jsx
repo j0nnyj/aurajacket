@@ -120,6 +120,13 @@ export default function HostMenu({ socket }) {
                         icon="🤬"
                         onClick={() => startGame('/host/trashtalk', 'TRASHTALK')}
                     />
+                    <SynthCard 
+                        title="BUFALA"
+                        tagline="Bugie & Verità"
+                        color="fuchsia" // O 'green' se preferisci
+                        icon="📰"
+                        onClick={() => startGame('/host/bufala', 'BUFALA')}
+                    />
 
                     
 
